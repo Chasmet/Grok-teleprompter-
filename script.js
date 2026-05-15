@@ -3,6 +3,7 @@ const teleprompter = document.getElementById('teleprompter');
 const container = document.getElementById('teleprompterContainer');
 const speedInput = document.getElementById('speed');
 const fontSizeInput = document.getElementById('fontSize');
+const qualitySelect = document.getElementById('qualitySelect');
 const videoInput = document.getElementById('videoInput');
 const backgroundVideo = document.getElementById('backgroundVideo');
 const cameraPreview = document.getElementById('cameraPreview');
@@ -30,6 +31,10 @@ scriptInput.addEventListener('input', () => {
 function renderText() {
   teleprompter.innerText = scriptInput.value || 'Colle ton texte ici.';
   teleprompter.style.fontSize = fontSizeInput.value + 'px';
+}
+
+function getSelectedHeight() {
+  return Number(qualitySelect.value);
 }
 
 function startPrompter() {
@@ -63,10 +68,21 @@ function resetPrompter() {
 
 async function startCamera() {
   try {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+    }
+
+    const height = getSelectedHeight(); 
+
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user' },
+      video: {
+        facingMode: 'user',
+        width: { ideal: Math.round(height * 9 / 16) },
+        height: { ideal: height }
+      },
       audio: true
     }); 
+
     cameraPreview.srcObject = cameraStream;
   } catch (error) {
     alert('Impossible d\'accéder à la caméra : ' + error.message);
@@ -142,6 +158,11 @@ cameraBtn.addEventListener('click', startCamera);
 recordBtn.addEventListener('click', startRecording);
 stopRecordBtn.addEventListener('click', stopRecording);
 downloadBtn.addEventListener('click', downloadRecording);
+qualitySelect.addEventListener('change', () => {
+  if (cameraStream) {
+    startCamera(); 
+  }
+}); 
 
 document.getElementById('startBtn').addEventListener('click', startPrompter);
 document.getElementById('pauseBtn').addEventListener('click', () => {
