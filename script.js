@@ -13,6 +13,9 @@ const stopRecordBtn = document.getElementById('stopRecordBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const recordingIndicator = document.getElementById('recordingIndicator');
 const countdownIndicator = document.getElementById('countdownIndicator');
+const liveTab = document.getElementById('liveTab');
+const videoTab = document.getElementById('videoTab');
+const tabButtons = document.querySelectorAll('.tab-btn');
 
 let position = container.clientHeight;
 let interval = null;
@@ -23,6 +26,22 @@ let recordedChunks = [];
 let recordedBlob = null;
 let micStream = null;
 let activeMode = 'live';
+
+function switchTab(tab) {
+  activeMode = tab;
+  if (liveTab) liveTab.hidden = tab !== 'live';
+  if (videoTab) videoTab.hidden = tab !== 'video';
+
+  tabButtons.forEach((btn) => {
+    btn.classList.toggle('active', btn.dataset.tab === tab);
+  });
+}
+
+tabButtons.forEach((btn) => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+}); 
+
+switchTab('live');
 
 scriptInput.value = localStorage.getItem('grok_script') || '';
 
@@ -78,7 +97,7 @@ async function ensureMic() {
 
 async function startCamera() {
   try {
-    activeMode = 'live';
+    switchTab('live'); 
 
     if (cameraStream) {
       cameraStream.getTracks().forEach(track => track.stop());
@@ -235,7 +254,7 @@ videoInput.addEventListener('change', async (event) => {
   const file = event.target.files[0];
   if (!file) return;
 
-  activeMode = 'video';
+  switchTab('video'); 
   await ensureMic(); 
 
   const url = URL.createObjectURL(file);
