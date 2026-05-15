@@ -10,9 +10,11 @@
   --text: #ffffff;
   --muted: rgba(255, 255, 255, 0.72);
   --blue: #2563eb;
-  --blue-2: #1d4ed8;
   --red: #dc2626;
   --gray: #334155;
+  --green: #16a34a;
+  --orange: #ea580c;
+  --purple: #7c3aed;
 }
 
 html,
@@ -234,8 +236,44 @@ button {
   background: var(--gray);
 }
 
-.danger-btn {
+.record-btn {
   background: var(--red);
+}
+
+.stop-btn {
+  background: #000000;
+}
+
+.download-btn {
+  background: var(--green);
+}
+
+.start-btn {
+  background: #ffffff;
+  color: #000000;
+}
+
+.pause-btn {
+  background: var(--orange);
+}
+
+.reset-btn {
+  background: var(--blue);
+}
+
+.mirror-btn {
+  background: var(--purple);
+}
+
+.manual-controls {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.manual-controls button {
+  flex: 1;
+  background: #475569;
 }
 
 @media (max-width: 480px) {
