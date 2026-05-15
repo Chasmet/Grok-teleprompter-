@@ -23,31 +23,26 @@
       <button class="tab-btn" data-mode="video" type="button">🎬 Vidéo + Voix</button>
     </nav>
 
-    <section class="card panel">
-      <div class="panel-title">Actions</div>
-      <div class="actions-grid">
+    <section class="card stage-card">
+      <div class="studio-toolbar">
+        <button id="startBtn" class="start-btn" type="button">▶ Play</button>
         <button id="recordBtn" class="record-btn" type="button">⏺ REC</button>
-        <button id="stopRecordBtn" class="stop-btn" type="button">⏹ Stop</button>
-        <button id="downloadBtn" class="download-btn" type="button">💾 Télécharger</button>
-        <button id="startBtn" class="start-btn" type="button">▶ Démarrer texte</button>
-        <button id="pauseBtn" class="pause-btn" type="button">⏸ Pause</button>
-        <button id="resetBtn" class="reset-btn" type="button">🔄 Reset</button>
-        <button id="mirrorBtn" class="mirror-btn" type="button">🪞 Miroir</button>
-      </div>
-      <div class="manual-controls">
         <button id="moveUpBtn" type="button">⬆ Monter</button>
         <button id="moveDownBtn" type="button">⬇ Descendre</button>
+        <button id="stopRecordBtn" class="stop-btn" type="button">⏹ Stop</button>
+        <button id="pauseBtn" class="pause-btn" type="button">⏸ Pause</button>
       </div>
-    </section>
 
-    <section class="card stage-card">
       <div class="stage-header">
         <span id="stageTitle">Aperçu caméra</span>
-        <span id="recordingIndicator" class="rec-pill" hidden>● REC</span>
       </div>
+
       <div class="stage" id="stageContainer">
         <video id="cameraPreview" autoplay muted playsinline></video>
         <video id="videoPreview" playsinline controls hidden></video>
+
+        <span id="recordingIndicator" class="rec-pill" hidden>● REC 00:00</span>
+
         <div id="prompterOverlay" class="prompter-overlay">
           <div id="prompterText" class="prompter-text">Colle ton texte ici.</div>
         </div>
@@ -103,6 +98,10 @@
           <option value="1:1">1:1 Carré</option>
         </select>
       </label>
+
+      <button id="downloadBtn" class="download-btn" type="button">💾 Télécharger</button>
+      <button id="resetBtn" class="reset-btn" type="button">🔄 Reset</button>
+      <button id="mirrorBtn" class="mirror-btn" type="button">🪞 Miroir</button>
     </section>
 
     <section class="card panel">
@@ -110,6 +109,7 @@
       <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
     </section>
   </div>
+
   <script src="script.js"></script>
 </body>
 </html>
