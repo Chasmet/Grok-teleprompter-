@@ -1,0 +1,9 @@
+{
+  "name": "Grok Teleprompter Studio",
+  "short_name": "Teleprompter",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "lang": "fr"
+}
