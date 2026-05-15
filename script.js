@@ -15,6 +15,7 @@ const scriptInput = document.getElementById('scriptInput');
 const prompterText = document.getElementById('prompterText');
 const speedInput = document.getElementById('speed');
 const sizeInput = document.getElementById('size');
+const positionSlider = document.getElementById('positionSlider');
 const recordBtn = document.getElementById('recordBtn');
 const stopRecordBtn = document.getElementById('stopRecordBtn');
 const downloadBtn = document.getElementById('downloadBtn');
@@ -35,8 +36,31 @@ let recordedChunks = [];
 let recordedBlob = null;
 let scrollInterval = null;
 let paused = false;
-let position = 0;
 let activeVideoUrl = null;
+
+let basePosition = parseInt(localStorage.getItem('textPosition') || '100', 10);
+let scrollOffset = 0;
+
+function applyPosition() {
+  prompterText.style.transform = `translateY(${basePosition + scrollOffset}px)`;
+}
+
+function savePosition() {
+  localStorage.setItem('textPosition', String(basePosition));
+}
+
+function updatePositionSlider() {
+  if (positionSlider) {
+    positionSlider.value = basePosition;
+  }
+}
+
+function setBasePosition(value) {
+  basePosition = parseInt(value, 10) || 0;
+  updatePositionSlider();
+  savePosition();
+  applyPosition();
+}
 
 function switchMode(mode) {
   activeMode = mode;
@@ -87,40 +111,36 @@ function updatePrompterText() {
   localStorage.setItem('grok_script', scriptInput.value);
 }
 
-function applyPosition() {
-  prompterText.style.transform = `translateY(${position}px)`;
-}
-
 function startPrompter() {
   updatePrompterText();
   clearInterval(scrollInterval);
   paused = false;
-  position = stageContainer.clientHeight + 100;
+  scrollOffset = 0;
   applyPosition();
   scrollInterval = setInterval(() => {
     if (paused) return;
-    position -= Number(speedInput.value) * 2;
+    scrollOffset -= Number(speedInput.value) * 2;
     applyPosition();
   }, 16);
 }
 
-function togglePause() { paused = !paused; }
+function togglePause() {
+  paused = !paused;
+}
 
 function resetPrompter() {
   clearInterval(scrollInterval);
   paused = false;
-  position = stageContainer.clientHeight + 100;
+  scrollOffset = 0;
   applyPosition();
 }
 
 function moveTextUp() {
-  position -= 50;
-  applyPosition();
+  setBasePosition(basePosition - 50);
 }
 
 function moveTextDown() {
-  position += 50;
-  applyPosition();
+  setBasePosition(basePosition + 50);
 }
 
 async function buildRecordingStream() {
@@ -209,6 +229,11 @@ scriptInput.addEventListener('input', updatePrompterText);
 sizeInput.addEventListener('input', () => {
   prompterText.style.fontSize = sizeInput.value + 'px';
 }); 
+if (positionSlider) {
+  positionSlider.addEventListener('input', (event) => {
+    setBasePosition(event.target.value);
+  });
+}
 
 recordBtn.addEventListener('click', startRecording);
 stopRecordBtn.addEventListener('click', stopRecording);
@@ -224,4 +249,5 @@ prompterText.style.fontSize = sizeInput.value + 'px';
 applyFormat();
 updatePrompterText(); 
 switchMode('live');
-resetPrompter(); 
+updatePositionSlider();
+applyPosition();
