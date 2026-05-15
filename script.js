@@ -22,6 +22,8 @@ const startBtn = document.getElementById('startBtn');
 const pauseBtn = document.getElementById('pauseBtn');
 const resetBtn = document.getElementById('resetBtn');
 const mirrorBtn = document.getElementById('mirrorBtn');
+const moveUpBtn = document.getElementById('moveUpBtn');
+const moveDownBtn = document.getElementById('moveDownBtn');
 const recordingIndicator = document.getElementById('recordingIndicator');
 
 let activeMode = 'live';
@@ -39,61 +41,38 @@ let activeVideoUrl = null;
 function switchMode(mode) {
   activeMode = mode;
   const isLive = mode === 'live';
-
   livePanel.hidden = !isLive;
   videoPanel.hidden = isLive;
-
   cameraPreview.hidden = !isLive;
   videoPreview.hidden = isLive;
-
   modeBadge.textContent = isLive ? 'Mode Live' : 'Mode Vidéo + Voix';
   stageTitle.textContent = isLive ? 'Aperçu caméra' : 'Vidéo importée';
-
-  tabButtons.forEach((btn) => {
-    btn.classList.toggle('active', btn.dataset.mode === mode);
-  });
+  tabButtons.forEach((btn) => btn.classList.toggle('active', btn.dataset.mode === mode));
 }
 
 function applyFormat() {
   const value = formatSelect.value;
   stageContainer.classList.remove('format-16-9', 'format-1-1');
-
-  if (value === '16:9') {
-    stageContainer.classList.add('format-16-9');
-  } else if (value === '1:1') {
-    stageContainer.classList.add('format-1-1');
-  }
+  if (value === '16:9') stageContainer.classList.add('format-16-9');
+  else if (value === '1:1') stageContainer.classList.add('format-1-1');
 }
 
-tabButtons.forEach((btn) => {
-  btn.addEventListener('click', () => switchMode(btn.dataset.mode));
-});
+tabButtons.forEach((btn) => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
 
 async function ensureMic() {
-  if (!micStream) {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  }
+  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   return micStream;
 }
 
 async function startCamera() {
   try {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop());
-    }
-
+    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
     const height = Number(qualitySelect.value);
     const width = facingMode === 'environment' ? 1280 : Math.round(height * 9 / 16);
-
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode,
-        width: { ideal: width },
-        height: { ideal: height }
-      },
+      video: { facingMode, width: { ideal: width }, height: { ideal: height } },
       audio: true
     });
-
     cameraPreview.srcObject = cameraStream;
     await ensureMic();
     switchMode('live');
@@ -108,85 +87,72 @@ function updatePrompterText() {
   localStorage.setItem('grok_script', scriptInput.value);
 }
 
+function applyPosition() {
+  prompterText.style.transform = `translateY(${position}px)`;
+}
+
 function startPrompter() {
   updatePrompterText();
   clearInterval(scrollInterval);
-
   paused = false;
-  position = stageContainer.clientHeight;
-  prompterText.style.transform = `translateY(${position}px)`;
-
+  position = stageContainer.clientHeight + 100;
+  applyPosition();
   scrollInterval = setInterval(() => {
     if (paused) return;
-
-    const speed = Number(speedInput.value);
-    position -= speed * 2;
-
-    prompterText.style.transform = `translateY(${position}px)`;
+    position -= Number(speedInput.value) * 2;
+    applyPosition();
   }, 16);
 }
 
-function togglePause() {
-  paused = !paused;
-}
+function togglePause() { paused = !paused; }
 
 function resetPrompter() {
   clearInterval(scrollInterval);
   paused = false;
-  prompterText.style.transform = 'translateY(0)';
+  position = stageContainer.clientHeight + 100;
+  applyPosition();
+}
+
+function moveTextUp() {
+  position -= 50;
+  applyPosition();
+}
+
+function moveTextDown() {
+  position += 50;
+  applyPosition();
 }
 
 async function buildRecordingStream() {
   if (activeMode === 'video' && videoPreview.src) {
     await ensureMic();
-
     const videoStream = videoPreview.captureStream();
     const combined = new MediaStream();
-
     videoStream.getVideoTracks().forEach((track) => combined.addTrack(track));
     micStream.getAudioTracks().forEach((track) => combined.addTrack(track));
-
     return combined;
   }
-
-  if (!cameraStream) {
-    throw new Error("Active d'abord la caméra.");
-  }
-
+  if (!cameraStream) throw new Error("Active d'abord la caméra.");
   return cameraStream;
 }
 
 async function startRecording() {
   try {
-    const stream = await buildRecordingStream();
-
+    const stream = await buildRecordingStream(); 
     recordedChunks = [];
     recordedBlob = null;
-
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm'
-    });
-
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' }); 
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
+      if (event.data.size > 0) recordedChunks.push(event.data);
     };
-
     mediaRecorder.onstop = () => {
-      recordedBlob = new Blob(recordedChunks, {
-        type: 'video/webm'
-      });
-
+      recordedBlob = new Blob(recordedChunks, { type: 'video/webm' }); 
       recordingIndicator.hidden = true;
       alert('Vidéo prête. Appuie sur Télécharger.');
     };
-
-    mediaRecorder.start();
+    mediaRecorder.start(); 
     recordingIndicator.hidden = false;
-
-    startPrompter();
-
+    startPrompter(); 
     if (activeMode === 'video') {
       videoPreview.currentTime = 0;
       videoPreview.play().catch(() => {});
@@ -198,9 +164,7 @@ async function startRecording() {
 }
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop();
-  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); 
 }
 
 function downloadRecording() {
@@ -208,24 +172,17 @@ function downloadRecording() {
     alert('Aucune vidéo enregistrée.');
     return;
   }
-
   const url = URL.createObjectURL(recordedBlob);
   const a = document.createElement('a');
-
   a.href = url;
   a.download = activeMode === 'video' ? 'video-avec-voix.webm' : 'grok-teleprompter.webm';
-  a.click();
-
+  a.click(); 
   URL.revokeObjectURL(url);
 }
 
 function loadVideo(file) {
   if (!file) return;
-
-  if (activeVideoUrl) {
-    URL.revokeObjectURL(activeVideoUrl);
-  }
-
+  if (activeVideoUrl) URL.revokeObjectURL(activeVideoUrl);
   activeVideoUrl = URL.createObjectURL(file);
   videoPreview.src = activeVideoUrl;
   switchMode('video');
@@ -236,35 +193,22 @@ function toggleMirror() {
   target.classList.toggle('mirror');
 }
 
-function toggleFormatAndResize() {
-  applyFormat();
-}
-
 cameraBtn.addEventListener('click', startCamera);
-
 flipCameraBtn.addEventListener('click', () => {
   facingMode = facingMode === 'user' ? 'environment' : 'user';
   startCamera();
 });
-
 qualitySelect.addEventListener('change', () => {
-  if (cameraStream && activeMode === 'live') {
-    startCamera();
-  }
-});
-
-formatSelect.addEventListener('change', toggleFormatAndResize);
-
-videoInput.addEventListener('change', (event) => {
-  loadVideo(event.target.files[0]);
-});
+  if (cameraStream && activeMode === 'live') startCamera(); 
+}); 
+formatSelect.addEventListener('change', applyFormat);
+videoInput.addEventListener('change', (event) => loadVideo(event.target.files[0]));
 
 scriptInput.value = localStorage.getItem('grok_script') || '';
 scriptInput.addEventListener('input', updatePrompterText);
-
 sizeInput.addEventListener('input', () => {
   prompterText.style.fontSize = sizeInput.value + 'px';
-});
+}); 
 
 recordBtn.addEventListener('click', startRecording);
 stopRecordBtn.addEventListener('click', stopRecording);
@@ -273,8 +217,11 @@ startBtn.addEventListener('click', startPrompter);
 pauseBtn.addEventListener('click', togglePause);
 resetBtn.addEventListener('click', resetPrompter);
 mirrorBtn.addEventListener('click', toggleMirror);
+if (moveUpBtn) moveUpBtn.addEventListener('click', moveTextUp);
+if (moveDownBtn) moveDownBtn.addEventListener('click', moveTextDown);
 
 prompterText.style.fontSize = sizeInput.value + 'px';
 applyFormat();
-updatePrompterText();
+updatePrompterText(); 
 switchMode('live');
+resetPrompter(); 
