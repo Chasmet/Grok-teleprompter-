@@ -21,6 +21,15 @@ main {
   margin-bottom: 10px;
 }
 
+#countdownIndicator {
+  display: none;
+  text-align: center;
+  font-size: 72px;
+  font-weight: bold;
+  color: #ffd60a;
+  margin-bottom: 10px;
+}
+
 #recordingIndicator {
   display: none;
   text-align: center;
