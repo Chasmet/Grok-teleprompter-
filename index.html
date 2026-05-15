@@ -21,6 +21,13 @@
     <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
 
     <div class="controls">
+      <label>Qualité vidéo : 
+        <select id="qualitySelect">
+          <option value="720">720p HD</option>
+          <option value="1080" selected>1080p Full HD</option>
+          <option value="2160">4K Ultra HD</option>
+        </select>
+      </label>
       <label>Vitesse : <input type="range" id="speed" min="1" max="10" value="3"></label>
       <label>Taille : <input type="range" id="fontSize" min="20" max="80" value="36"></label>
     </div>
