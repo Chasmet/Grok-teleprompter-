@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grok Teleprompter Studio</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="main-container">
+        <video id="preview" autoplay playsinline muted></video>
+        <video id="uploaded-video" autoplay playsinline loop muted style="display:none;"></video>
+
+        <div id="prompter" class="prompter-overlay">
+            <div id="prompter-text" class="prompter-text"></div>
+        </div>
+
+        <div class="top-controls">
+            <button onclick="switchMode('live')" class="mode-btn active" id="live-btn">📹 Live</button>
+            <button onclick="switchMode('video')" class="mode-btn" id="video-btn">📼 Vidéo</button>
+            <button onclick="toggleRecording()" class="rec-btn" id="rec-btn">● REC</button>
+        </div>
+
+        <div class="bottom-panel">
+            <textarea id="script" placeholder="Colle ton texte ici..."></textarea>
+            <div class="sliders">
+                <label>Vitesse <input type="range" id="speed-slider" min="0.5" max="4" step="0.1" value="1.8"></label>
+                <label>Taille <input type="range" id="size-slider" min="40" max="100" step="2" value="58"></label>
+            </div>
+            <div class="action-buttons">
+                <button onclick="startPrompter()">▶ Démarrer Prompter</button>
+                <button onclick="togglePause()">⏸ Pause</button>
+                <button onclick="resetPrompter()">↺ Reset</button>
+                <button onclick="toggleMirror()">🔄 Miroir</button>
+                <label class="file-label">📥 Importer vidéo <input type="file" id="video-upload" accept="video/*" onchange="loadVideo(this)"></label>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
