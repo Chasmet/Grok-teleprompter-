@@ -1,6 +1,5 @@
 const $ = (id) => document.getElementById(id);
 
-// ===== ÉLÉMENTS DOM =====
 const modeBadge = $('modeBadge');
 const stageTitle = $('stageTitle');
 const stageContainer = $('stageContainer');
@@ -29,63 +28,50 @@ const moveUpBtn = $('moveUpBtn');
 const moveDownBtn = $('moveDownBtn');
 const recordingIndicator = $('recordingIndicator');
 
-// ===== VARIABLES GLOBALES =====
 let activeMode = 'live';
 let facingMode = 'user';
 let cameraStream = null;
+let micStream = null;
 let mediaRecorder = null;
 let recordedChunks = [];
 let recordedBlob = null;
 let scrollInterval = null;
 let paused = false;
-
 let basePosition = parseInt(localStorage.getItem('textPosition') || '100', 10);
 let scrollOffset = 0;
-
 let recordingStartTime = null;
 let recordingTimer = null;
 let lastDownloadUrl = null;
+let activeVideoUrl = null;
 
-// ===== CHRONOMÈTRE =====
 function formatDuration(ms) {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 }
 
 function updateRecordingIndicator() {
   if (!recordingIndicator) return;
-
-  const text = recordingStartTime
+  recordingIndicator.textContent = recordingStartTime
     ? `● REC ${formatDuration(Date.now() - recordingStartTime)}`
     : '● REC 00:00';
-
-  recordingIndicator.textContent = text;
 }
 
 function startRecordingTimer() {
   if (!recordingIndicator) return;
-
-  stopRecordingTimer();
-
-  recordingStartTime = Date.now();
+  stopRecordingTimer(); 
+  recordingStartTime = Date.now(); 
   recordingIndicator.hidden = false;
   recordingIndicator.style.display = 'inline-flex';
-
-  updateRecordingIndicator();
-
-  recordingTimer = setInterval(() => {
-    updateRecordingIndicator();
-  }, 1000);
+  updateRecordingIndicator(); 
+  recordingTimer = setInterval(updateRecordingIndicator, 1000);
 }
 
 function stopRecordingTimer() {
   clearInterval(recordingTimer);
   recordingTimer = null;
   recordingStartTime = null;
-
   if (recordingIndicator) {
     recordingIndicator.textContent = '● REC 00:00';
     recordingIndicator.hidden = true;
@@ -93,54 +79,39 @@ function stopRecordingTimer() {
   }
 }
 
-// ===== TÉLÉCHARGEMENT =====
 function setDownloadReady(ready) {
   if (!downloadBtn) return;
-
   downloadBtn.disabled = !ready;
   downloadBtn.style.opacity = ready ? '1' : '0.6';
 }
 
-// ===== TEXTE =====
 function updatePrompterText() {
   const text = scriptInput.value.trim() || 'Colle ton texte ici.';
   prompterText.textContent = text;
-
   localStorage.setItem('grok_script', scriptInput.value);
 }
 
 function applyTextSize() {
-  prompterText.style.fontSize = `${sizeInput.value}px`;
+  if (sizeInput) prompterText.style.fontSize = `${sizeInput.value}px`;
 }
 
 function applyPosition() {
-  prompterText.style.transform =
-    `translateY(${basePosition + scrollOffset}px)`;
+  prompterText.style.transform = `translateY(${basePosition + scrollOffset}px)`;
 }
 
 function setBasePosition(value) {
   basePosition = parseInt(value, 10) || 0;
-
   localStorage.setItem('textPosition', String(basePosition));
-
-  if (positionSlider) {
-    positionSlider.value = basePosition;
-  }
-
+  if (positionSlider) positionSlider.value = basePosition;
   applyPosition();
 }
 
-// ===== TÉLÉPROMPTEUR =====
 function startPrompter() {
   clearInterval(scrollInterval);
-
   paused = false;
-
   scrollInterval = setInterval(() => {
     if (paused) return;
-
-    scrollOffset -= Number(speedInput.value || 1.8) * 2;
-
+    scrollOffset -= Number(speedInput?.value || 1.8) * 2;
     applyPosition();
   }, 16);
 }
@@ -151,114 +122,95 @@ function togglePause() {
 
 function resetPrompter() {
   clearInterval(scrollInterval);
-
   paused = false;
   scrollOffset = 0;
-
   applyPosition();
-  stopRecordingTimer();
+  stopRecordingTimer(); 
 }
 
-// ===== MODES =====
 function switchMode(mode) {
   activeMode = mode;
-
   const live = mode === 'live';
-
   if (livePanel) livePanel.hidden = !live;
   if (videoPanel) videoPanel.hidden = live;
-
-  cameraPreview.hidden = !live;
-  videoPreview.hidden = live;
-
-  if (modeBadge) {
-    modeBadge.textContent = live
-      ? 'Mode Live'
-      : 'Mode Vidéo + Voix';
-  }
-
-  if (stageTitle) {
-    stageTitle.textContent = live
-      ? 'Aperçu caméra'
-      : 'Vidéo importée';
-  }
-
+  if (cameraPreview) cameraPreview.hidden = !live;
+  if (videoPreview) videoPreview.hidden = live;
+  if (modeBadge) modeBadge.textContent = live ? 'Mode Live' : 'Mode Vidéo + Voix';
+  if (stageTitle) stageTitle.textContent = live ? 'Aperçu caméra' : 'Vidéo importée';
   document.querySelectorAll('.tab-btn').forEach((btn) => {
-    btn.classList.toggle(
-      'active',
-      btn.dataset.mode === mode
-    );
+    btn.classList.toggle('active', btn.dataset.mode === mode);
   });
 }
 
 function applyFormat() {
   if (!stageContainer || !formatSelect) return;
-
-  stageContainer.classList.remove(
-    'format-16-9',
-    'format-1-1'
-  );
-
-  if (formatSelect.value === '16:9') {
-    stageContainer.classList.add('format-16-9');
-  }
-
-  if (formatSelect.value === '1:1') {
-    stageContainer.classList.add('format-1-1');
-  }
+  stageContainer.classList.remove('format-16-9', 'format-1-1');
+  if (formatSelect.value === '16:9') stageContainer.classList.add('format-16-9');
+  if (formatSelect.value === '1:1') stageContainer.classList.add('format-1-1');
 }
 
-// ===== CAMÉRA =====
+async function ensureMic() {
+  if (!micStream) {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
+  }
+  return micStream;
+}
+
 async function startCamera() {
   try {
     if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => {
-        track.stop();
-      });
+      cameraStream.getTracks().forEach((track) => track.stop()); 
     }
 
-    const height = Number(
-      qualitySelect?.value || 1080
-    );
+    const height = Number(qualitySelect?.value || 1080);
 
-    cameraStream =
-      await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode,
-          height: { ideal: height }
-        },
-        audio: true
-      });
+    cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        height: { ideal: height }
+      },
+      audio: true
+    });
 
     cameraPreview.srcObject = cameraStream;
-
+    await ensureMic(); 
     switchMode('live');
   } catch (error) {
-    alert(
-      "Impossible d'accéder à la caméra : " +
-      error.message
-    );
+    alert("Impossible d'accéder à la caméra : " + error.message);
   }
 }
 
-// ===== ENREGISTREMENT =====
 async function startRecording() {
   try {
     if (!cameraStream && activeMode === 'live') {
-      await startCamera();
+      await startCamera(); 
     }
 
-    const stream =
-      activeMode === 'live'
-        ? cameraStream
-        : videoPreview.captureStream();
+    let stream;
 
-    // Nettoyage complet
-    if (
-      mediaRecorder &&
-      mediaRecorder.state !== 'inactive'
-    ) {
-      mediaRecorder.stop();
+    if (activeMode === 'live') {
+      stream = cameraStream;
+    } else {
+      if (!videoPreview.src) {
+        alert('Aucune vidéo importée.');
+        return;
+      }
+
+      await ensureMic(); 
+
+      const videoStream = videoPreview.captureStream(); 
+      stream = new MediaStream(); 
+
+      videoStream.getVideoTracks().forEach(track => stream.addTrack(track)); 
+      micStream.getAudioTracks().forEach(track => stream.addTrack(track)); 
+
+      videoPreview.currentTime = 0;
+      await videoPreview.play(); 
+      videoPreview.onended = () => stopRecording(); 
+    }
+
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop(); 
     }
 
     recordedChunks = [];
@@ -276,10 +228,7 @@ async function startRecording() {
     });
 
     mediaRecorder.ondataavailable = (event) => {
-      if (
-        event.data &&
-        event.data.size > 0
-      ) {
+      if (event.data && event.data.size > 0) {
         recordedChunks.push(event.data);
       }
     };
@@ -288,38 +237,31 @@ async function startRecording() {
       if (recordedChunks.length > 0) {
         recordedBlob = new Blob(recordedChunks, {
           type: 'video/webm'
-        });
-
+        }); 
         setDownloadReady(true);
+        alert('Vidéo prête. Appuie sur Télécharger.');
       }
 
-      stopRecordingTimer();
-
-      // Important pour le prochain enregistrement
+      stopRecordingTimer(); 
       mediaRecorder = null;
     };
 
     mediaRecorder.start(1000);
-
-    startRecordingTimer();
-    startPrompter();
+    startRecordingTimer(); 
+    startPrompter(); 
   } catch (error) {
     alert(error.message);
   }
 }
 
 function stopRecording() {
-  if (
-    mediaRecorder &&
-    mediaRecorder.state !== 'inactive'
-  ) {
-    mediaRecorder.stop();
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop(); 
   } else {
-    stopRecordingTimer();
+    stopRecordingTimer(); 
   }
 }
 
-// ===== TÉLÉCHARGEMENT =====
 function downloadRecording() {
   if (!recordedBlob) {
     alert('Aucune vidéo enregistrée.');
@@ -330,161 +272,83 @@ function downloadRecording() {
     URL.revokeObjectURL(lastDownloadUrl);
   }
 
-  lastDownloadUrl =
-    URL.createObjectURL(recordedBlob);
+  lastDownloadUrl = URL.createObjectURL(recordedBlob);
 
   const a = document.createElement('a');
   a.href = lastDownloadUrl;
-  a.download =
-    `grok-teleprompter-${Date.now()}.webm`;
-
+  a.download = `grok-teleprompter-${Date.now()}.webm`;
   document.body.appendChild(a);
-  a.click();
+  a.click(); 
   document.body.removeChild(a);
 }
 
-// ===== OUTILS =====
 function toggleMirror() {
-  const target =
-    activeMode === 'live'
-      ? cameraPreview
-      : videoPreview;
-
-  target.classList.toggle('mirror');
+  const target = activeMode === 'live' ? cameraPreview : videoPreview;
+  target?.classList.toggle('mirror');
 }
 
 function loadVideo(file) {
   if (!file) return;
 
-  videoPreview.src =
-    URL.createObjectURL(file);
+  if (activeVideoUrl) {
+    URL.revokeObjectURL(activeVideoUrl);
+  }
 
+  activeVideoUrl = URL.createObjectURL(file);
+  videoPreview.src = activeVideoUrl;
   switchMode('video');
 }
 
-// ===== ÉVÉNEMENTS =====
-cameraBtn?.addEventListener(
-  'click',
-  startCamera
-);
+cameraBtn?.addEventListener('click', startCamera);
+flipCameraBtn?.addEventListener('click', () => {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  startCamera(); 
+}); 
+videoInput?.addEventListener('change', (event) => {
+  loadVideo(event.target.files[0]);
+}); 
+qualitySelect?.addEventListener('change', () => {
+  if (cameraStream) startCamera(); 
+}); 
+formatSelect?.addEventListener('change', applyFormat);
 
-flipCameraBtn?.addEventListener(
-  'click',
-  () => {
-    facingMode =
-      facingMode === 'user'
-        ? 'environment'
-        : 'user';
+if (scriptInput) {
+  scriptInput.value = localStorage.getItem('grok_script') || '';
+  scriptInput.addEventListener('input', updatePrompterText);
+}
 
-    startCamera();
-  }
-);
+sizeInput?.addEventListener('input', applyTextSize);
+positionSlider?.addEventListener('input', (event) => {
+  setBasePosition(event.target.value);
+}); 
 
-videoInput?.addEventListener(
-  'change',
-  (event) => {
-    loadVideo(event.target.files[0]);
-  }
-);
+startBtn?.addEventListener('click', startPrompter);
+recordBtn?.addEventListener('click', startRecording);
+stopRecordBtn?.addEventListener('click', stopRecording);
+pauseBtn?.addEventListener('click', togglePause);
+resetBtn?.addEventListener('click', resetPrompter);
+mirrorBtn?.addEventListener('click', toggleMirror);
+downloadBtn?.addEventListener('click', downloadRecording);
 
-qualitySelect?.addEventListener(
-  'change',
-  () => {
-    if (cameraStream) {
-      startCamera();
-    }
-  }
-);
+moveUpBtn?.addEventListener('click', () => {
+  setBasePosition(basePosition + 50);
+}); 
+moveDownBtn?.addEventListener('click', () => {
+  setBasePosition(basePosition - 50);
+}); 
 
-formatSelect?.addEventListener(
-  'change',
-  applyFormat
-);
-
-scriptInput.value =
-  localStorage.getItem('grok_script') || '';
-
-scriptInput.addEventListener(
-  'input',
-  updatePrompterText
-);
-
-sizeInput?.addEventListener(
-  'input',
-  applyTextSize
-);
-
-positionSlider?.addEventListener(
-  'input',
-  (event) => {
-    setBasePosition(event.target.value);
-  }
-);
-
-startBtn?.addEventListener(
-  'click',
-  startPrompter
-);
-
-recordBtn?.addEventListener(
-  'click',
-  startRecording
-);
-
-stopRecordBtn?.addEventListener(
-  'click',
-  stopRecording
-);
-
-pauseBtn?.addEventListener(
-  'click',
-  togglePause
-);
-
-resetBtn?.addEventListener(
-  'click',
-  resetPrompter
-);
-
-mirrorBtn?.addEventListener(
-  'click',
-  toggleMirror
-);
-
-downloadBtn?.addEventListener(
-  'click',
-  downloadRecording
-);
-
-moveUpBtn?.addEventListener(
-  'click',
-  () => {
-    setBasePosition(basePosition + 50);
-  }
-);
-
-moveDownBtn?.addEventListener(
-  'click',
-  () => {
-    setBasePosition(basePosition - 50);
-  }
-);
-
-document
-  .querySelectorAll('.tab-btn')
-  .forEach((btn) => {
-    btn.addEventListener('click', () => {
-      switchMode(btn.dataset.mode);
-    });
+document.querySelectorAll('.tab-btn').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    switchMode(btn.dataset.mode);
   });
+}); 
 
-// ===== INITIALISATION =====
 window.onload = () => {
-  updatePrompterText();
-  applyTextSize();
-  applyPosition();
-  applyFormat();
+  updatePrompterText(); 
+  applyTextSize(); 
+  applyPosition(); 
+  applyFormat(); 
   switchMode('live');
   setDownloadReady(false);
-  stopRecordingTimer();
+  stopRecordingTimer(); 
 };
