@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Grok Teleprompter</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+</head>
+<body>
+    <div class="video-container">
+        <video id="preview" autoplay playsinline muted></video>
+        <video id="uploaded-video" autoplay playsinline muted loop style="display:none;"></video>
+
+        <!-- Téléprompter Overlay -->
+        <div id="prompter" class="prompter-overlay">
+            <div id="prompter-text" class="prompter-text"></div>
+        </div>
+
+        <!-- Top Bar -->
+        <div class="top-bar">
+            <button onclick="switchMode('live')" class="mode-btn active" id="live-btn">📹 Live</button>
+            <button onclick="switchMode('video')" class="mode-btn" id="video-btn">📼 Vidéo + Voix</button>
+            <button onclick="toggleRecording()" class="rec-btn" id="rec-btn">● REC</button>
+        </div>
+
+        <!-- Script & Controls -->
+        <div class="controls-panel">
+            <textarea id="script" placeholder="Colle ton texte ici..."></textarea>
+            
+            <div class="sliders">
+                <label>Vitesse : <input type="range" id="speed-slider" min="0.5" max="3" step="0.1" value="1"></label>
+                <label>Taille : <input type="range" id="size-slider" min="30" max="80" step="1" value="52"></label>
+            </div>
+
+            <div class="buttons">
+                <button onclick="startPrompter()">▶️ Démarrer</button>
+                <button onclick="togglePause()">⏸ Pause</button>
+                <button onclick="resetPrompter()">↺ Reset</button>
+                <button onclick="toggleMirror()">🔄 Miroir</button>
+                <button onclick="downloadScript()">⬇️ Télécharger</button>
+                <label class="import-btn">
+                    📥 Importer vidéo
+                    <input type="file" id="video-upload" accept="video/*" onchange="loadVideo(this)">
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
