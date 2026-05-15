@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grok Teleprompter Studio</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>🎬 Grok Teleprompter Studio</h1>
+    <p>Lis ton script face caméra</p>
+  </header>
+
+  <main>
+    <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
+
+    <div class="controls">
+      <label>Vitesse : <input type="range" id="speed" min="1" max="10" value="3"></label>
+      <label>Taille : <input type="range" id="fontSize" min="20" max="80" value="36"></label>
+    </div>
+
+    <div class="buttons">
+      <button id="startBtn">▶️ Démarrer</button>
+      <button id="pauseBtn">⏸️ Pause</button>
+      <button id="resetBtn">🔄 Reset</button>
+      <button id="mirrorBtn">🪞 Miroir</button>
+    </div>
+
+    <section id="teleprompterContainer">
+      <div id="teleprompter"></div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
