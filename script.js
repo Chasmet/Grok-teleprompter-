@@ -11,6 +11,7 @@ const recordBtn = document.getElementById('recordBtn');
 const stopRecordBtn = document.getElementById('stopRecordBtn');
 const downloadBtn = document.getElementById('downloadBtn');
 const recordingIndicator = document.getElementById('recordingIndicator');
+const countdownIndicator = document.getElementById('countdownIndicator');
 
 let position = container.clientHeight;
 let interval = null;
@@ -72,12 +73,7 @@ async function startCamera() {
   }
 }
 
-function startRecording() {
-  if (!cameraStream) {
-    alert('Active d\'abord la caméra.');
-    return;
-  }
-
+function performRecording() {
   recordedChunks = [];
   recordedBlob = null;
 
@@ -95,6 +91,30 @@ function startRecording() {
 
   mediaRecorder.start(); 
   recordingIndicator.style.display = 'block';
+  startPrompter(); 
+}
+
+function startRecording() {
+  if (!cameraStream) {
+    alert('Active d\'abord la caméra.');
+    return;
+  }
+
+  let count = 3;
+  countdownIndicator.style.display = 'block';
+  countdownIndicator.textContent = count;
+
+  const countdown = setInterval(() => {
+    count--;
+
+    if (count > 0) {
+      countdownIndicator.textContent = count;
+    } else {
+      clearInterval(countdown);
+      countdownIndicator.style.display = 'none';
+      performRecording(); 
+    }
+  }, 1000);
 }
 
 function stopRecording() {
