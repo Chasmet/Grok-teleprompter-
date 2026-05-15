@@ -45,11 +45,9 @@
         <span id="stageTitle">Aperçu caméra</span>
         <span id="recordingIndicator" class="rec-pill" hidden>● REC</span>
       </div>
-
       <div class="stage" id="stageContainer">
         <video id="cameraPreview" autoplay muted playsinline></video>
         <video id="videoPreview" playsinline controls hidden></video>
-
         <div id="prompterOverlay" class="prompter-overlay">
           <div id="prompterText" class="prompter-text">Colle ton texte ici.</div>
         </div>
@@ -58,7 +56,6 @@
 
     <section id="livePanel" class="card panel">
       <div class="panel-title">Mode Live</div>
-
       <label class="field">
         <span>Qualité vidéo</span>
         <select id="qualitySelect">
@@ -67,19 +64,16 @@
           <option value="2160">4K Ultra HD</option>
         </select>
       </label>
-
       <button id="cameraBtn" class="primary-btn" type="button">📷 Activer la caméra</button>
       <button id="flipCameraBtn" class="secondary-btn" type="button">🔄 Retourner caméra</button>
     </section>
 
     <section id="videoPanel" class="card panel" hidden>
       <div class="panel-title">Mode Vidéo + Voix</div>
-
       <label class="field">
         <span>Importer une vidéo</span>
         <input id="videoInput" type="file" accept="video/*">
       </label>
-
       <p class="hint">La vidéo importée sera enregistrée avec ta voix.</p>
     </section>
 
@@ -97,6 +91,11 @@
       </label>
 
       <label class="field">
+        <span>Position du texte</span>
+        <input id="positionSlider" type="range" min="-800" max="800" step="10" value="100">
+      </label>
+
+      <label class="field">
         <span>Format vidéo</span>
         <select id="formatSelect">
           <option value="9:16" selected>9:16 Vertical (TikTok)</option>
@@ -111,7 +110,6 @@
       <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
     </section>
   </div>
-
   <script src="script.js"></script>
 </body>
 </html>
