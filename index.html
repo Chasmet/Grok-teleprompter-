@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Grok Teleprompter Studio</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>🎬 Grok Teleprompter Studio</h1>
+    <p>Caméra + Téléprompteur + Enregistrement</p>
+  </header>
+
+  <main>
+    <!-- Onglets -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="live">📹 Live</button>
+      <button class="tab-btn" data-tab="video">🎬 Vidéo + Voix</button>
+    </div>
+
+    <!-- Indicateurs -->
+    <div id="countdownIndicator"></div>
+    <div id="recordingIndicator">🔴 REC</div>
+
+    <!-- Onglet Live -->
+    <section id="liveTab" class="tab-content">
+      <video id="cameraPreview" autoplay muted playsinline></video>
+
+      <div class="controls">
+        <label>
+          Qualité vidéo :
+          <select id="qualitySelect">
+            <option value="720">720p HD</option>
+            <option value="1080" selected>1080p Full HD</option>
+            <option value="2160">4K Ultra HD</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="buttons">
+        <button id="cameraBtn">📷 Activer la caméra</button>
+      </div>
+    </section>
+
+    <!-- Onglet Vidéo + Voix -->
+    <section id="videoTab" class="tab-content" hidden>
+      <h2>🎥 Importer une vidéo</h2>
+
+      <input type="file" id="videoInput" accept="video/*">
+
+      <video
+        id="backgroundVideo"
+        controls
+        playsinline
+        style="
+          width:100%;
+          max-height:320px;
+          margin-top:10px;
+          border-radius:12px;
+          display:none;
+        ">
+      </video>
+    </section>
+
+    <!-- Zone commune -->
+    <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
+
+    <div class="controls">
+      <label>
+        Vitesse :
+        <input type="range" id="speed" min="1" max="10" value="3">
+      </label>
+
+      <label>
+        Taille :
+        <input type="range" id="fontSize" min="20" max="80" value="36">
+      </label>
+    </div>
+
+    <div class="buttons">
+      <button id="recordBtn">⏺️ REC</button>
+      <button id="stopRecordBtn">⏹️ Stop</button>
+      <button id="downloadBtn">💾 Télécharger</button>
+      <button id="startBtn">▶️ Démarrer</button>
+      <button id="pauseBtn">⏸️ Pause</button>
+      <button id="resetBtn">🔄 Reset</button>
+      <button id="mirrorBtn">🪞 Miroir</button>
+    </div>
+
+    <!-- Téléprompteur -->
+    <section id="teleprompterContainer">
+      <div id="teleprompter"></div>
+    </section>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
