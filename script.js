@@ -37,9 +37,54 @@ let recordedBlob = null;
 let scrollInterval = null;
 let paused = false;
 let activeVideoUrl = null;
+let recordingStartTime = null;
+let recordingTimer = null;
+let lastDownloadUrl = null;
 
 let basePosition = parseInt(localStorage.getItem('textPosition') || '100', 10);
 let scrollOffset = 0;
+
+function formatDuration(ms) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return hours > 0
+    ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+    : `${pad(minutes)}:${pad(seconds)}`;
+}
+
+function updateRecordingIndicator() {
+  if (!recordingIndicator) return;
+  if (!recordingStartTime) {
+    recordingIndicator.textContent = '● REC';
+    return;
+  }
+  recordingIndicator.textContent = `● REC ${formatDuration(Date.now() - recordingStartTime)}`;
+}
+
+function startRecordingTimer() {
+  recordingStartTime = Date.now(); 
+  recordingIndicator.hidden = false;
+  updateRecordingIndicator(); 
+  clearInterval(recordingTimer);
+  recordingTimer = setInterval(updateRecordingIndicator, 1000);
+}
+
+function stopRecordingTimer() {
+  clearInterval(recordingTimer);
+  recordingTimer = null;
+  recordingStartTime = null;
+  updateRecordingIndicator(); 
+  recordingIndicator.hidden = true;
+}
+
+function setDownloadReady(ready) {
+  if (!downloadBtn) return;
+  downloadBtn.disabled = !ready;
+  downloadBtn.style.opacity = ready ? '1' : '0.6';
+}
 
 function applyPosition() {
   prompterText.style.transform = `translateY(${basePosition + scrollOffset}px)`;
@@ -50,9 +95,7 @@ function savePosition() {
 }
 
 function updatePositionSlider() {
-  if (positionSlider) {
-    positionSlider.value = basePosition;
-  }
+  if (positionSlider) positionSlider.value = basePosition;
 }
 
 function setBasePosition(value) {
@@ -84,21 +127,21 @@ function applyFormat() {
 tabButtons.forEach((btn) => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
 
 async function ensureMic() {
-  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
   return micStream;
 }
 
 async function startCamera() {
   try {
-    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
+    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop()); 
     const height = Number(qualitySelect.value);
     const width = facingMode === 'environment' ? 1280 : Math.round(height * 9 / 16);
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode, width: { ideal: width }, height: { ideal: height } },
       audio: true
-    });
+    }); 
     cameraPreview.srcObject = cameraStream;
-    await ensureMic();
+    await ensureMic(); 
     switchMode('live');
   } catch (error) {
     alert("Impossible d'accéder à la caméra : " + error.message);
@@ -112,15 +155,15 @@ function updatePrompterText() {
 }
 
 function startPrompter() {
-  updatePrompterText();
+  updatePrompterText(); 
   clearInterval(scrollInterval);
   paused = false;
   scrollOffset = 0;
-  applyPosition();
+  applyPosition(); 
   scrollInterval = setInterval(() => {
     if (paused) return;
     scrollOffset -= Number(speedInput.value) * 2;
-    applyPosition();
+    applyPosition(); 
   }, 16);
 }
 
@@ -145,11 +188,11 @@ function moveTextDown() {
 
 async function buildRecordingStream() {
   if (activeMode === 'video' && videoPreview.src) {
-    await ensureMic();
-    const videoStream = videoPreview.captureStream();
-    const combined = new MediaStream();
-    videoStream.getVideoTracks().forEach((track) => combined.addTrack(track));
-    micStream.getAudioTracks().forEach((track) => combined.addTrack(track));
+    await ensureMic(); 
+    const videoStream = videoPreview.captureStream(); 
+    const combined = new MediaStream(); 
+    videoStream.getVideoTracks().forEach((track) => combined.addTrack(track)); 
+    micStream.getAudioTracks().forEach((track) => combined.addTrack(track)); 
     return combined;
   }
   if (!cameraStream) throw new Error("Active d'abord la caméra.");
@@ -158,21 +201,46 @@ async function buildRecordingStream() {
 
 async function startRecording() {
   try {
-    const stream = await buildRecordingStream(); 
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      alert('Un enregistrement est déjà en cours.');
+      return;
+    }
+
+    if (lastDownloadUrl) {
+      URL.revokeObjectURL(lastDownloadUrl);
+      lastDownloadUrl = null;
+    }
+
     recordedChunks = [];
     recordedBlob = null;
+    setDownloadReady(false);
+
+    const stream = await buildRecordingStream(); 
     mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' }); 
+
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) recordedChunks.push(event.data);
+      if (event.data && event.data.size > 0) recordedChunks.push(event.data);
     };
+
     mediaRecorder.onstop = () => {
+      if (recordedChunks.length === 0) {
+        stopRecordingTimer(); 
+        alert('Aucune donnée vidéo enregistrée.');
+        return;
+      }
+
       recordedBlob = new Blob(recordedChunks, { type: 'video/webm' }); 
-      recordingIndicator.hidden = true;
-      alert('Vidéo prête. Appuie sur Télécharger.');
+      stopRecordingTimer(); 
+      setDownloadReady(true);
+
+      const sizeMB = (recordedBlob.size / 1024 / 1024).toFixed(2);
+      alert(`Vidéo prête. Taille : ${sizeMB} MB. Appuie sur Télécharger.`);
     };
-    mediaRecorder.start(); 
-    recordingIndicator.hidden = false;
+
+    mediaRecorder.start(1000);
+    startRecordingTimer(); 
     startPrompter(); 
+
     if (activeMode === 'video') {
       videoPreview.currentTime = 0;
       videoPreview.play().catch(() => {});
@@ -192,12 +260,19 @@ function downloadRecording() {
     alert('Aucune vidéo enregistrée.');
     return;
   }
-  const url = URL.createObjectURL(recordedBlob);
+
+  if (lastDownloadUrl) URL.revokeObjectURL(lastDownloadUrl);
+  lastDownloadUrl = URL.createObjectURL(recordedBlob);
+
+  const now = new Date(); 
+  const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+
   const a = document.createElement('a');
-  a.href = url;
-  a.download = activeMode === 'video' ? 'video-avec-voix.webm' : 'grok-teleprompter.webm';
+  a.href = lastDownloadUrl;
+  a.download = `grok-teleprompter-${stamp}.webm`;
+  document.body.appendChild(a);
   a.click(); 
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
 }
 
 function loadVideo(file) {
@@ -217,7 +292,7 @@ cameraBtn.addEventListener('click', startCamera);
 flipCameraBtn.addEventListener('click', () => {
   facingMode = facingMode === 'user' ? 'environment' : 'user';
   startCamera();
-});
+}); 
 qualitySelect.addEventListener('change', () => {
   if (cameraStream && activeMode === 'live') startCamera(); 
 }); 
@@ -230,9 +305,7 @@ sizeInput.addEventListener('input', () => {
   prompterText.style.fontSize = sizeInput.value + 'px';
 }); 
 if (positionSlider) {
-  positionSlider.addEventListener('input', (event) => {
-    setBasePosition(event.target.value);
-  });
+  positionSlider.addEventListener('input', (event) => setBasePosition(event.target.value)); 
 }
 
 recordBtn.addEventListener('click', startRecording);
@@ -250,4 +323,6 @@ applyFormat();
 updatePrompterText(); 
 switchMode('live');
 updatePositionSlider();
-applyPosition();
+applyPosition(); 
+setDownloadReady(false);
+updateRecordingIndicator();
