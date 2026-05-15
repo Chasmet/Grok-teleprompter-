@@ -1,3 +1,7 @@
+const existing = document.createElement('script');
+// Version corrigée : rendu canvas pour le mode Vidéo + Voix.
+// Le code complet est identique à la version précédente, avec les ajouts ci-dessous.
+
 const $ = (id) => document.getElementById(id);
 
 const modeBadge = $('modeBadge');
@@ -43,6 +47,12 @@ let recordingStartTime = null;
 let recordingTimer = null;
 let lastDownloadUrl = null;
 let activeVideoUrl = null;
+
+// Canvas de rendu pour exporter la vidéo importée sans les contrôles Play.
+let renderCanvas = document.createElement('canvas');
+let renderCtx = renderCanvas.getContext('2d');
+let renderStream = null;
+let renderAnimation = null;
 
 function formatDuration(ms) {
   const totalSeconds = Math.floor(ms / 1000);
@@ -116,9 +126,7 @@ function startPrompter() {
   }, 16);
 }
 
-function togglePause() {
-  paused = !paused;
-}
+function togglePause() { paused = !paused; }
 
 function resetPrompter() {
   clearInterval(scrollInterval);
@@ -150,28 +158,18 @@ function applyFormat() {
 }
 
 async function ensureMic() {
-  if (!micStream) {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
-  }
+  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
   return micStream;
 }
 
 async function startCamera() {
   try {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach((track) => track.stop()); 
-    }
-
+    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
     const height = Number(qualitySelect?.value || 1080);
-
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode,
-        height: { ideal: height }
-      },
+      video: { facingMode, height: { ideal: height } },
       audio: true
     });
-
     cameraPreview.srcObject = cameraStream;
     await ensureMic(); 
     switchMode('live');
@@ -180,11 +178,74 @@ async function startCamera() {
   }
 }
 
+function wrapText(ctx, text, maxWidth) {
+  const paragraphs = text.split('\n');
+  const lines = [];
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(' ');
+    let line = '';
+    for (const word of words) {
+      const testLine = line ? line + ' ' + word : word;
+      if (ctx.measureText(testLine).width > maxWidth && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line) lines.push(line);
+    lines.push('');
+  }
+  return lines;
+}
+
+function startCanvasRendering() {
+  const width = videoPreview.videoWidth || 1080;
+  const height = videoPreview.videoHeight || 1920;
+  renderCanvas.width = width;
+  renderCanvas.height = height;
+  renderStream = renderCanvas.captureStream(30);
+
+  const draw = () => {
+    renderCtx.clearRect(0, 0, width, height);
+    renderCtx.drawImage(videoPreview, 0, 0, width, height);
+
+    const fontSize = Number(sizeInput?.value || 72);
+    renderCtx.font = `700 ${fontSize}px Arial`;
+    renderCtx.textAlign = 'center';
+    renderCtx.fillStyle = 'white';
+    renderCtx.shadowColor = 'rgba(0,0,0,0.7)';
+    renderCtx.shadowBlur = 12;
+
+    const lines = wrapText(renderCtx, scriptInput?.value || '', width * 0.8);
+    const lineHeight = fontSize * 1.25;
+    let y = basePosition + scrollOffset;
+    const x = width / 2;
+
+    for (const line of lines) {
+      if (line !== '') renderCtx.fillText(line, x, y);
+      y += lineHeight;
+    }
+
+    renderAnimation = requestAnimationFrame(draw);
+  };
+
+  draw(); 
+  return renderStream;
+}
+
+function stopCanvasRendering() {
+  if (renderAnimation) cancelAnimationFrame(renderAnimation);
+  renderAnimation = null;
+  if (renderStream) {
+    renderStream.getTracks().forEach(track => track.stop());
+    renderStream = null;
+  }
+}
+
 async function startRecording() {
   try {
-    if (!cameraStream && activeMode === 'live') {
-      await startCamera(); 
-    }
+    if (!cameraStream && activeMode === 'live') await startCamera(); 
 
     let stream;
 
@@ -197,21 +258,19 @@ async function startRecording() {
       }
 
       await ensureMic(); 
-
-      const videoStream = videoPreview.captureStream(); 
-      stream = new MediaStream(); 
-
-      videoStream.getVideoTracks().forEach(track => stream.addTrack(track)); 
-      micStream.getAudioTracks().forEach(track => stream.addTrack(track)); 
-
+      videoPreview.controls = false;
       videoPreview.currentTime = 0;
       await videoPreview.play(); 
+
+      const canvasStream = startCanvasRendering(); 
+      stream = new MediaStream(); 
+      canvasStream.getVideoTracks().forEach(track => stream.addTrack(track)); 
+      micStream.getAudioTracks().forEach(track => stream.addTrack(track)); 
+
       videoPreview.onended = () => stopRecording(); 
     }
 
-    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-      mediaRecorder.stop(); 
-    }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); 
 
     recordedChunks = [];
     recordedBlob = null;
@@ -223,25 +282,20 @@ async function startRecording() {
 
     setDownloadReady(false);
 
-    mediaRecorder = new MediaRecorder(stream, {
-      mimeType: 'video/webm'
-    });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
 
     mediaRecorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
+      if (event.data && event.data.size > 0) recordedChunks.push(event.data);
     };
 
     mediaRecorder.onstop = () => {
       if (recordedChunks.length > 0) {
-        recordedBlob = new Blob(recordedChunks, {
-          type: 'video/webm'
-        }); 
+        recordedBlob = new Blob(recordedChunks, { type: 'video/webm' }); 
         setDownloadReady(true);
         alert('Vidéo prête. Appuie sur Télécharger.');
       }
 
+      stopCanvasRendering(); 
       stopRecordingTimer(); 
       mediaRecorder = null;
     };
@@ -255,11 +309,8 @@ async function startRecording() {
 }
 
 function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-    mediaRecorder.stop(); 
-  } else {
-    stopRecordingTimer(); 
-  }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop(); 
+  else stopRecordingTimer(); 
 }
 
 function downloadRecording() {
@@ -267,13 +318,8 @@ function downloadRecording() {
     alert('Aucune vidéo enregistrée.');
     return;
   }
-
-  if (lastDownloadUrl) {
-    URL.revokeObjectURL(lastDownloadUrl);
-  }
-
+  if (lastDownloadUrl) URL.revokeObjectURL(lastDownloadUrl);
   lastDownloadUrl = URL.createObjectURL(recordedBlob);
-
   const a = document.createElement('a');
   a.href = lastDownloadUrl;
   a.download = `grok-teleprompter-${Date.now()}.webm`;
@@ -289,13 +335,10 @@ function toggleMirror() {
 
 function loadVideo(file) {
   if (!file) return;
-
-  if (activeVideoUrl) {
-    URL.revokeObjectURL(activeVideoUrl);
-  }
-
+  if (activeVideoUrl) URL.revokeObjectURL(activeVideoUrl);
   activeVideoUrl = URL.createObjectURL(file);
   videoPreview.src = activeVideoUrl;
+  videoPreview.controls = false;
   switchMode('video');
 }
 
@@ -304,12 +347,8 @@ flipCameraBtn?.addEventListener('click', () => {
   facingMode = facingMode === 'user' ? 'environment' : 'user';
   startCamera(); 
 }); 
-videoInput?.addEventListener('change', (event) => {
-  loadVideo(event.target.files[0]);
-}); 
-qualitySelect?.addEventListener('change', () => {
-  if (cameraStream) startCamera(); 
-}); 
+videoInput?.addEventListener('change', (event) => loadVideo(event.target.files[0]));
+qualitySelect?.addEventListener('change', () => { if (cameraStream) startCamera(); }); 
 formatSelect?.addEventListener('change', applyFormat);
 
 if (scriptInput) {
@@ -318,9 +357,7 @@ if (scriptInput) {
 }
 
 sizeInput?.addEventListener('input', applyTextSize);
-positionSlider?.addEventListener('input', (event) => {
-  setBasePosition(event.target.value);
-}); 
+positionSlider?.addEventListener('input', (event) => setBasePosition(event.target.value)); 
 
 startBtn?.addEventListener('click', startPrompter);
 recordBtn?.addEventListener('click', startRecording);
@@ -329,18 +366,11 @@ pauseBtn?.addEventListener('click', togglePause);
 resetBtn?.addEventListener('click', resetPrompter);
 mirrorBtn?.addEventListener('click', toggleMirror);
 downloadBtn?.addEventListener('click', downloadRecording);
-
-moveUpBtn?.addEventListener('click', () => {
-  setBasePosition(basePosition + 50);
-}); 
-moveDownBtn?.addEventListener('click', () => {
-  setBasePosition(basePosition - 50);
-}); 
+moveUpBtn?.addEventListener('click', () => setBasePosition(basePosition + 50)); 
+moveDownBtn?.addEventListener('click', () => setBasePosition(basePosition - 50)); 
 
 document.querySelectorAll('.tab-btn').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    switchMode(btn.dataset.mode);
-  });
+  btn.addEventListener('click', () => switchMode(btn.dataset.mode));
 }); 
 
 window.onload = () => {
@@ -348,7 +378,7 @@ window.onload = () => {
   applyTextSize(); 
   applyPosition(); 
   applyFormat(); 
-  switchMode('live');
-  setDownloadReady(false);
+  switchMode('live'); 
+  setDownloadReady(false); 
   stopRecordingTimer(); 
 };
