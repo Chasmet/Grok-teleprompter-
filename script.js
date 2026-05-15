@@ -58,7 +58,7 @@ function formatDuration(ms) {
 function updateRecordingIndicator() {
   if (!recordingIndicator) return;
   if (!recordingStartTime) {
-    recordingIndicator.textContent = '● REC';
+    recordingIndicator.textContent = '● REC 00:00';
     return;
   }
   recordingIndicator.textContent = `● REC ${formatDuration(Date.now() - recordingStartTime)}`;
@@ -127,19 +127,19 @@ function applyFormat() {
 tabButtons.forEach((btn) => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
 
 async function ensureMic() {
-  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); 
+  if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   return micStream;
 }
 
 async function startCamera() {
   try {
-    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop()); 
+    if (cameraStream) cameraStream.getTracks().forEach((track) => track.stop());
     const height = Number(qualitySelect.value);
     const width = facingMode === 'environment' ? 1280 : Math.round(height * 9 / 16);
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode, width: { ideal: width }, height: { ideal: height } },
       audio: true
-    }); 
+    });
     cameraPreview.srcObject = cameraStream;
     await ensureMic(); 
     switchMode('live');
