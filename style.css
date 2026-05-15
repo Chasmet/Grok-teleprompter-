@@ -1,0 +1,67 @@
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #0d1117;
+  color: white;
+}
+
+header {
+  text-align: center;
+  padding: 20px;
+}
+
+main {
+  padding: 15px;
+}
+
+textarea {
+  width: 100%;
+  height: 180px;
+  border-radius: 12px;
+  border: none;
+  padding: 15px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.controls, .buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+button {
+  padding: 15px;
+  font-size: 18px;
+  border: none;
+  border-radius: 12px;
+  background: #238636;
+  color: white;
+}
+
+#teleprompterContainer {
+  margin-top: 20px;
+  height: 50vh;
+  overflow: hidden;
+  border: 2px solid #30363d;
+  border-radius: 16px;
+  background: black;
+  position: relative;
+}
+
+#teleprompter {
+  position: absolute;
+  width: 100%;
+  padding: 20px;
+  box-sizing: border-box;
+  text-align: center;
+  line-height: 1.6;
+  font-size: 36px;
+  color: white;
+  top: 100%;
+}
+
+.mirror {
+  transform: scaleX(-1);
+}
