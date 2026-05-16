@@ -69,7 +69,7 @@ function updateRecordingIndicator() {
 }
 
 function startRecordingTimer() {
-  stopRecordingTimer(); 
+  stopRecordingTimer();
   recordingStartTime = Date.now(); 
   recordingIndicator.hidden = false;
   recordingIndicator.style.display = 'inline-flex';
@@ -186,7 +186,7 @@ async function startCamera() {
 
     switchMode('live');
   } catch (e) {
-    showMessage('Caméra refusée'); 
+    showMessage('Caméra refusée');
   }
 }
 
@@ -205,16 +205,14 @@ async function startRecording() {
       stream = cameraStream;
     } else {
       if (!videoPreview || !videoPreview.src) {
-        showMessage('Importe une vidéo'); 
+        showMessage('Importe une vidéo');
         return;
       }
 
       await ensureMic(); 
 
-      if (prompterText) {
-        prompterText.style.visibility = 'hidden';
-      }
-
+      // Le texte reste visible pour lecture.
+      // captureStream() n'enregistre QUE la vidéo importée.
       videoPreview.currentTime = 0;
       await videoPreview.play(); 
 
@@ -252,10 +250,6 @@ async function startRecording() {
         showMessage('Vidéo prête'); 
       }
 
-      if (prompterText) {
-        prompterText.style.visibility = 'visible';
-      }
-
       stopRecordingTimer(); 
       mediaRecorder = null;
     };
@@ -264,10 +258,6 @@ async function startRecording() {
     startRecordingTimer(); 
     startPrompter(); 
   } catch (e) {
-    if (prompterText) {
-      prompterText.style.visibility = 'visible';
-    }
-
     showMessage('Erreur enregistrement'); 
   }
 }
