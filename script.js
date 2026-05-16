@@ -55,18 +55,17 @@ function formatDuration(ms) {
 }
 
 function showMessage(message) {
-  if (recordingIndicator) {
-    recordingIndicator.hidden = false;
-    recordingIndicator.style.display = 'inline-flex';
-    recordingIndicator.textContent = message;
-    setTimeout(() => {
-      if (!recordingStartTime) {
-        recordingIndicator.hidden = true;
-        recordingIndicator.style.display = 'none';
-        recordingIndicator.textContent = '● REC 00:00';
-      }
-    }, 2500);
-  }
+  if (!recordingIndicator) return;
+  recordingIndicator.hidden = false;
+  recordingIndicator.style.display = 'inline-flex';
+  recordingIndicator.textContent = message;
+  setTimeout(() => {
+    if (!recordingStartTime) {
+      recordingIndicator.hidden = true;
+      recordingIndicator.style.display = 'none';
+      recordingIndicator.textContent = '● REC 00:00';
+    }
+  }, 2500);
 }
 
 function updateRecordingIndicator() {
@@ -127,7 +126,7 @@ function startPrompter() {
     if (paused) return;
     scrollOffset -= Number(speedInput.value || 1.8) * 2;
     applyPosition(); 
-  }, 16);
+  }, 33);
 }
 
 function togglePause() { paused = !paused; }
@@ -172,21 +171,6 @@ async function startCamera() {
   }
 }
 
-function wrapText(ctx, text, maxWidth) {
-  const words = text.split(/\s+/);
-  const lines = [];
-  let line = '';
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxWidth && line) {
-      lines.push(line);
-      line = word;
-    } else line = test;
-  }
-  if (line) lines.push(line);
-  return lines;
-}
-
 function startCanvasRendering() {
   const width = videoPreview.videoWidth || 1080;
   const height = videoPreview.videoHeight || 1920;
@@ -195,21 +179,13 @@ function startCanvasRendering() {
   renderStream = renderCanvas.captureStream(30);
 
   const draw = () => {
-    renderCtx.drawImage(videoPreview, 0, 0, width, height);
-    const fontSize = Number(sizeInput.value || 58);
-    renderCtx.font = `700 ${fontSize}px Arial`;
-    renderCtx.fillStyle = 'white';
-    renderCtx.textAlign = 'center';
-    renderCtx.shadowColor = 'rgba(0,0,0,0.8)';
-    renderCtx.shadowBlur = 10;
+    renderCtx.clearRect(0, 0, width, height);
 
-    const lines = wrapText(renderCtx, scriptInput.value || '', width * 0.8);
-    const lineHeight = fontSize * 1.25;
-    let y = basePosition + scrollOffset;
-    for (const line of lines) {
-      renderCtx.fillText(line, width / 2, y);
-      y += lineHeight;
-    }
+    // IMPORTANT : seule la vidéo est dessinée.
+    // Le texte du téléprompteur reste visible à l'écran,
+    // mais n'est plus intégré dans le fichier exporté.
+    renderCtx.drawImage(videoPreview, 0, 0, width, height);
+
     renderAnimation = requestAnimationFrame(draw);
   };
 
@@ -220,7 +196,7 @@ function startCanvasRendering() {
 function stopCanvasRendering() {
   if (renderAnimation) cancelAnimationFrame(renderAnimation);
   renderAnimation = null;
-  if (renderStream) renderStream.getTracks().forEach(t => t.stop());
+  if (renderStream) renderStream.getTracks().forEach(t => t.stop()); 
   renderStream = null;
 }
 
@@ -302,7 +278,10 @@ function loadVideo(file) {
 }
 
 cameraBtn.addEventListener('click', startCamera);
-flipCameraBtn.addEventListener('click', () => { facingMode = facingMode === 'user' ? 'environment' : 'user'; startCamera(); }); 
+flipCameraBtn.addEventListener('click', () => {
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  startCamera(); 
+}); 
 videoInput.addEventListener('change', e => loadVideo(e.target.files[0]));
 qualitySelect.addEventListener('change', () => { if (cameraStream) startCamera(); }); 
 formatSelect.addEventListener('change', applyFormat);
