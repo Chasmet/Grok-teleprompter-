@@ -1,48 +1,46 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Téléprompteur Double Écran</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app">
-    <section class="top-screen">
+    <div class="preview-area">
       <video id="cameraPreview" autoplay playsinline muted></video>
       <video id="importedVideo" playsinline muted hidden></video>
-    </section>
+    </div>
 
-    <section class="bottom-screen">
-      <div class="controls">
-        <button id="cameraBtn">📷 Caméra</button>
-        <label for="videoInput" class="file-btn">🎞️ Vidéo</label>
-        <button id="playBtn">▶️ Lecture</button>
-        <button id="pauseBtn">⏸️ Pause</button>
-        <button id="resetBtn">↺ Reset</button>
-        <button id="mirrorBtn">⇆ Miroir</button>
-        <button id="recordBtn" class="record">🔴 Enregistrer</button>
-      </div>
+    <div class="controls">
+      <button id="cameraBtn">📷 Live</button>
+      <label for="videoInput" class="file-btn">🎞️ Importer</label>
+      <button id="flipBtn">🔄 Retourner</button>
+      <button id="playBtn">▶️ Lecture</button>
+      <button id="pauseBtn">⏸️ Pause</button>
+      <button id="mirrorBtn">⇆ Miroir</button>
+      <button id="recordBtn" class="record">🔴 Enregistrer</button>
+    </div>
 
-      <input type="file" id="videoInput" accept="video/*" hidden />
+    <input type="file" id="videoInput" accept="video/*" hidden>
 
-      <div class="settings">
-        <label for="speedRange">Vitesse</label>
-        <input type="range" id="speedRange" min="1" max="10" value="3" />
-      </div>
+    <div class="settings">
+      <label for="speedRange">Vitesse</label>
+      <input type="range" id="speedRange" min="1" max="10" value="3">
+    </div>
 
-      <textarea id="scriptInput" spellcheck="false" placeholder="Colle ton texte ici...">Bienvenue dans mon téléprompteur double écran.
+    <textarea id="scriptInput" spellcheck="false" placeholder="Colle ton texte ici...">Bienvenue dans mon téléprompteur double écran.
 La vidéo apparaît en haut.
 Le texte défile uniquement en bas.
 Le texte n'est jamais enregistré dans la vidéo.</textarea>
 
-      <div id="teleprompterContainer">
-        <div id="teleprompterText"></div>
-      </div>
+    <div id="teleprompterContainer">
+      <div id="teleprompterText"></div>
+    </div>
 
-      <a id="downloadLink" hidden>Télécharger la vidéo</a>
-    </section>
+    <a id="downloadLink" hidden>Télécharger la vidéo</a>
   </div>
 
   <script src="script.js"></script>
