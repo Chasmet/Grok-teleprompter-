@@ -9,7 +9,7 @@ body {
   width: 100%;
   height: 100%;
   background: #050b1f;
-  color: #fff;
+  color: #ffffff;
   font-family: Arial, sans-serif;
   overflow: hidden;
 }
@@ -29,17 +29,17 @@ body {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  padding: 10px;
+  padding: 8px;
   background: #09122a;
 }
 
 .tab {
   border: none;
-  border-radius: 14px;
-  padding: 12px;
-  font-size: 15px;
+  border-radius: 16px;
+  padding: 10px 8px;
+  font-size: 14px;
   font-weight: 700;
-  color: #fff;
+  color: #ffffff;
   background: #1e293b;
 }
 
@@ -48,27 +48,28 @@ body {
 }
 
 .preview-area {
-  height: 28vh;
-  min-height: 180px;
-  background: #000;
+  height: 22vh;
+  min-height: 140px;
+  max-height: 220px;
+  background: #000000;
   border-bottom: 2px solid #2563eb;
   overflow: hidden;
   position: relative;
 }
 
 .preview-area video {
-  width: 100%;
-  height: 100%;
+  width: 100%; 
+  height: 100%; 
   object-fit: contain;
-  background: #000;
+  background: #000000;
   display: block;
 }
 
 .panel-controls {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 8px;
-  padding: 10px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 6px 8px;
   background: #081229;
 }
 
@@ -78,11 +79,12 @@ button,
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 14px;
-  padding: 12px 10px;
-  font-size: 14px;
+  border-radius: 12px;
+  padding: 9px 6px;
+  min-height: 42px;
+  font-size: 12px;
   font-weight: 700;
-  color: #fff;
+  color: #ffffff;
   background: linear-gradient(135deg, #2563eb, #7c3aed);
   text-decoration: none;
   cursor: pointer;
@@ -100,8 +102,14 @@ button:disabled {
 .record-bar {
   display: grid;
   grid-template-columns: 2fr 1fr;
-  gap: 8px;
-  padding: 0 10px 10px 10px;
+  gap: 6px;
+  padding: 4px 8px 8px 8px;
+}
+
+.record,
+.stop {
+  min-height: 44px;
+  font-size: 12px;
 }
 
 .record {
@@ -113,38 +121,40 @@ button:disabled {
 }
 
 #recordTimer {
-  margin-left: 8px;
+  margin-left: 6px;
   font-variant-numeric: tabular-nums;
+  color: #ffffff;
 }
 
 .settings {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  padding: 0 10px 10px 10px;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 8px 8px 8px;
 }
 
 .setting label {
   display: block;
-  margin-bottom: 6px;
-  font-size: 14px;
+  margin-bottom: 4px;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .setting input[type="range"] {
-  width: 100%;
+  width: 100%; 
 }
 
 #scriptInput {
-  width: calc(100% - 20px);
-  margin: 0 10px 10px 10px;
-  height: 88px;
+  width: calc(100% - 16px);
+  margin: 0 8px 8px 8px;
+  height: 72px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px;
   background: #111827;
-  color: #fff;
-  font-size: 16px;
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1.4;
   resize: none;
   outline: none;
 }
@@ -152,31 +162,33 @@ button:disabled {
 .text-controls {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  padding: 0 10px 10px 10px;
+  gap: 6px;
+  padding: 0 8px 8px 8px;
 }
 
 #teleprompterContainer {
   flex: 1;
-  margin: 0 10px 10px 10px;
-  background: #000;
-  border-radius: 16px;
+  min-height: 180px;
+  margin: 0 8px 8px 8px;
+  background: #000000;
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
   overflow: hidden;
   position: relative;
 }
 
 #teleprompterText {
   position: absolute;
-  top: 100%;
-  left: 50%;
+  top: 100%; 
+  left: 50%; 
   transform: translateX(-50%);
-  width: 92%;
+  width: 92%; 
   white-space: pre-wrap;
   text-align: center;
   font-size: 44px;
   font-weight: 800;
   line-height: 1.35;
-  color: #fff;
+  color: #ffffff;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
   will-change: transform;
 }
@@ -187,37 +199,46 @@ button:disabled {
 
 #downloadLink {
   display: block;
-  margin: 0 10px 10px 10px;
+  margin: 0 8px 8px 8px;
   text-align: center;
-  padding: 14px;
-  border-radius: 12px;
+  padding: 12px;
+  border-radius: 14px;
   background: #16a34a;
-  color: #fff;
+  color: #ffffff;
   text-decoration: none;
   font-weight: 700;
+  font-size: 14px;
 }
 
 @media (max-width: 768px) {
   .preview-area {
-    height: 24vh;
-    min-height: 150px;
-  }
-
-  #teleprompterText {
-    font-size: 34px;
+    height: 18vh;
+    min-height: 120px;
   }
 
   button,
   .file-btn {
-    font-size: 13px;
-    padding: 11px 8px;
+    padding: 8px 4px;
+    min-height: 38px;
+    font-size: 11px;
+  }
+
+  .record,
+  .stop {
+    min-height: 40px;
+    font-size: 11px;
   }
 
   #scriptInput {
-    height: 76px;
+    height: 64px;
+    font-size: 13px;
   }
 
-  .text-controls {
-    grid-template-columns: repeat(3, 1fr);
+  #teleprompterContainer {
+    min-height: 220px;
+  }
+
+  #teleprompterText {
+    font-size: 34px;
   }
 }
