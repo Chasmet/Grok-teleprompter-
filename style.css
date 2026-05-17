@@ -2,11 +2,11 @@
   box-sizing: border-box;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
-  width: 100%;
-  height: 100%;
+  width: 100%;n  height: 100%;
   background: #050b1f;
   color: #ffffff;
   font-family: Arial, sans-serif;
@@ -24,20 +24,24 @@ body {
   height: 100vh;
 }
 
+/* Écran du haut : aperçu vidéo/caméra (20%) */
 .top-screen {
-  height: 50vh;
+  height: 20vh;
+  min-height: 140px;
   background: #000;
   border-bottom: 2px solid #1d4ed8;
 }
 
 .top-screen video {
-  width: 100%;n  height: 100%;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
   background: #000;
 }
 
+/* Écran du bas : commandes + téléprompteur (80%) */
 .bottom-screen {
-  height: 50vh;
+  height: 80vh;
   display: flex;
   flex-direction: column;
   padding: 8px;
@@ -59,8 +63,12 @@ button {
   padding: 10px;
   font-size: 15px;
   font-weight: bold;
-  color: white;
+  color: #ffffff;
   background: linear-gradient(135deg, #2563eb, #7c3aed);
+}
+
+button:active {
+  transform: scale(0.98);
 }
 
 #recordBtn {
@@ -76,15 +84,18 @@ button {
   display: block;
   margin-bottom: 4px;
   font-weight: bold;
+  font-size: 14px;
 }
 
 .settings input[type="range"] {
   width: 100%;n}
 
+/* Cache la zone d'édition pour maximiser l'espace */
 #scriptInput {
   display: none;
 }
 
+/* Téléprompteur */
 #teleprompterContainer {
   flex: 1;
   position: relative;
@@ -97,8 +108,8 @@ button {
 #teleprompterText {
   position: absolute;
   left: 16px;
-  width: calc(100% - 32px);
-  top: 100%;n  white-space: pre-wrap;
+  top: 100%;n  width: calc(100% - 32px);
+  white-space: pre-wrap;
   text-align: center;
   font-size: 42px;
   font-weight: bold;
@@ -112,14 +123,23 @@ button {
   padding: 10px;
   border-radius: 10px;
   background: #16a34a;
-  color: white;
+  color: #ffffff;
   text-decoration: none;
   font-weight: bold;
 }
 
 @media (max-width: 768px) {
+  .top-screen {
+    height: 20vh;
+    min-height: 120px;
+  }
+
+  .bottom-screen {
+    height: 80vh;
+  }
+
   #teleprompterText {
-    font-size: 30px;
+    font-size: 34px;
   }
 
   button {
