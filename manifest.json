@@ -1,0 +1,11 @@
+{
+  "name": "Téléprompteur Pro",
+  "short_name": "Téléprompteur",
+  "description": "Téléprompteur mobile avec mode Live et vidéo importée.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#050b1f",
+  "theme_color": "#2563eb",
+  "orientation": "portrait",
+  "lang": "fr"
+}
