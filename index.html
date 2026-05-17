@@ -33,27 +33,27 @@
 
     <section class="card stage-card" aria-label="Zone de prévisualisation">
       <div class="studio-toolbar">
-        <button id="startBtn"     class="start-btn"  type="button" title="Démarrer le défilement">▶ Play</button>
-        <button id="pauseBtn"     class="pause-btn"  type="button" title="Pause / Reprendre">⏸ Pause</button>
-        <button id="resetBtn"     class="reset-btn"  type="button" title="Réinitialiser la position">↺ Reset</button>
-        <button id="recordBtn"    class="record-btn" type="button" title="Démarrer l'enregistrement">● REC</button>
-        <button id="stopRecordBtn" class="stop-btn"  type="button" title="Stopper l'enregistrement" disabled>■ Stop</button>
-        <button id="mirrorBtn"    class="mirror-btn" type="button" title="Effet miroir">⇄ Miroir</button>
+        <button id="startBtn" class="start-btn" type="button" title="Démarrer le défilement">▶ Play</button>
+        <button id="pauseBtn" class="pause-btn" type="button" title="Pause / Reprendre">⏸ Pause</button>
+        <button id="resetBtn" class="reset-btn" type="button" title="Réinitialiser la position">↺ Reset</button>
+        <button id="recordBtn" class="record-btn" type="button" title="Démarrer l'enregistrement">● REC</button>
+        <button id="stopRecordBtn" class="stop-btn" type="button" title="Stopper l'enregistrement" disabled>■ Stop</button>
+        <button id="mirrorBtn" class="mirror-btn" type="button" title="Effet miroir">⇄ Miroir</button>
       </div>
 
       <div class="stage-header">
         <span id="stageTitle">Aperçu caméra</span>
         <div class="position-nudge">
-          <button id="moveUpBtn"   type="button" title="Monter le texte">▲</button>
+          <button id="moveUpBtn" type="button" title="Monter le texte">▲</button>
           <button id="moveDownBtn" type="button" title="Descendre le texte">▼</button>
         </div>
       </div>
 
       <div class="stage" id="stageContainer">
         <video id="cameraPreview" autoplay muted playsinline></video>
-        <video id="videoPreview"  playsinline hidden></video>
+        <video id="videoPreview" playsinline hidden></video>
+        <video id="exportVideo" hidden playsinline muted></video>
 
-        <!-- id="prompter" correspond exactement à ce que le JS cherche -->
         <div id="prompter" class="prompter-overlay" aria-hidden="true">
           <div id="prompterText" class="prompter-text">Colle ton texte ici.</div>
         </div>
@@ -62,7 +62,6 @@
       </div>
     </section>
 
-    <!-- Panneau Mode Live -->
     <section id="livePanel" class="card panel">
       <div class="panel-title">📷 Mode Live</div>
       <label class="field">
@@ -74,12 +73,11 @@
         </select>
       </label>
       <div class="btn-row">
-        <button id="cameraBtn"    class="primary-btn"   type="button">Activer la caméra</button>
+        <button id="cameraBtn" class="primary-btn" type="button">Activer la caméra</button>
         <button id="flipCameraBtn" class="secondary-btn" type="button">⇄ Retourner</button>
       </div>
     </section>
 
-    <!-- Panneau Mode Vidéo -->
     <section id="videoPanel" class="card panel" hidden>
       <div class="panel-title">🎬 Mode Vidéo + Voix</div>
       <label class="field">
@@ -89,7 +87,6 @@
       <p class="hint">La vidéo importée sera enregistrée avec ta voix en direct.</p>
     </section>
 
-    <!-- Panneau Réglages -->
     <section class="card panel">
       <div class="panel-title">⚙️ Réglages</div>
 
@@ -120,7 +117,6 @@
       <button id="downloadBtn" class="download-btn" type="button" disabled>⬇ Télécharger la vidéo</button>
     </section>
 
-    <!-- Panneau Script -->
     <section class="card panel">
       <div class="panel-title">📝 Script</div>
       <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
