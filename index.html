@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#08111f">
+  <title>Grok Teleprompter Studio</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+
+  <!--
+    FIX DURÉE WEBM : cette lib réinjecte les métadonnées de durée dans le fichier.
+    Sans elle, Android affiche 7s pour une vidéo de 30s.
+    Elle est petite (~8 Ko) et chargée en différé pour ne pas bloquer l'UI.
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.4/fix-webm-duration.min.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Studio personnel</p>
+        <h1>Grok Teleprompter</h1>
+      </div>
+      <div id="modeBadge" class="badge" aria-live="polite">Mode Live</div>
+    </header>
+
+    <nav class="tabs" aria-label="Modes d'enregistrement">
+      <button class="tab-btn active" data-mode="live" type="button" aria-pressed="true">Live</button>
+      <button class="tab-btn" data-mode="video" type="button" aria-pressed="false">Vidéo + Voix</button>
+    </nav>
+
+    <section class="card stage-card" aria-label="Zone de prévisualisation">
+      <div class="studio-toolbar">
+        <button id="startBtn"     class="start-btn"  type="button" title="Démarrer le défilement">▶ Play</button>
+        <button id="pauseBtn"     class="pause-btn"  type="button" title="Pause / Reprendre">⏸ Pause</button>
+        <button id="resetBtn"     class="reset-btn"  type="button" title="Réinitialiser la position">↺ Reset</button>
+        <button id="recordBtn"    class="record-btn" type="button" title="Démarrer l'enregistrement">● REC</button>
+        <button id="stopRecordBtn" class="stop-btn"  type="button" title="Stopper l'enregistrement" disabled>■ Stop</button>
+        <button id="mirrorBtn"    class="mirror-btn" type="button" title="Effet miroir">⇄ Miroir</button>
+      </div>
+
+      <div class="stage-header">
+        <span id="stageTitle">Aperçu caméra</span>
+        <div class="position-nudge">
+          <button id="moveUpBtn"   type="button" title="Monter le texte">▲</button>
+          <button id="moveDownBtn" type="button" title="Descendre le texte">▼</button>
+        </div>
+      </div>
+
+      <div class="stage" id="stageContainer">
+        <video id="cameraPreview" autoplay muted playsinline></video>
+        <video id="videoPreview"  playsinline hidden></video>
+
+        <!-- id="prompter" correspond exactement à ce que le JS cherche -->
+        <div id="prompter" class="prompter-overlay" aria-hidden="true">
+          <div id="prompterText" class="prompter-text">Colle ton texte ici.</div>
+        </div>
+
+        <span id="recordingIndicator" class="rec-pill" hidden aria-live="assertive">● REC 00:00</span>
+      </div>
+    </section>
+
+    <!-- Panneau Mode Live -->
+    <section id="livePanel" class="card panel">
+      <div class="panel-title">📷 Mode Live</div>
+      <label class="field">
+        <span>Qualité vidéo</span>
+        <select id="qualitySelect">
+          <option value="720">720p HD</option>
+          <option value="1080" selected>1080p Full HD</option>
+          <option value="2160">4K Ultra HD</option>
+        </select>
+      </label>
+      <div class="btn-row">
+        <button id="cameraBtn"    class="primary-btn"   type="button">Activer la caméra</button>
+        <button id="flipCameraBtn" class="secondary-btn" type="button">⇄ Retourner</button>
+      </div>
+    </section>
+
+    <!-- Panneau Mode Vidéo -->
+    <section id="videoPanel" class="card panel" hidden>
+      <div class="panel-title">🎬 Mode Vidéo + Voix</div>
+      <label class="field">
+        <span>Importer une vidéo</span>
+        <input id="videoInput" type="file" accept="video/*">
+      </label>
+      <p class="hint">La vidéo importée sera enregistrée avec ta voix en direct.</p>
+    </section>
+
+    <!-- Panneau Réglages -->
+    <section class="card panel">
+      <div class="panel-title">⚙️ Réglages</div>
+
+      <label class="field">
+        <span>Vitesse du texte</span>
+        <input id="speed" type="range" min="0.5" max="4" step="0.1" value="1.8">
+      </label>
+
+      <label class="field">
+        <span>Taille du texte</span>
+        <input id="size" type="range" min="32" max="96" step="2" value="58">
+      </label>
+
+      <label class="field">
+        <span>Position du texte</span>
+        <input id="positionSlider" type="range" min="-800" max="800" step="10" value="100">
+      </label>
+
+      <label class="field">
+        <span>Format vidéo</span>
+        <select id="formatSelect">
+          <option value="9:16" selected>9:16 Vertical (TikTok / Reels)</option>
+          <option value="16:9">16:9 Paysage (YouTube)</option>
+          <option value="1:1">1:1 Carré (Instagram)</option>
+        </select>
+      </label>
+
+      <button id="downloadBtn" class="download-btn" type="button" disabled>⬇ Télécharger la vidéo</button>
+    </section>
+
+    <!-- Panneau Script -->
+    <section class="card panel">
+      <div class="panel-title">📝 Script</div>
+      <textarea id="scriptInput" placeholder="Colle ici ton texte..."></textarea>
+    </section>
+
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
