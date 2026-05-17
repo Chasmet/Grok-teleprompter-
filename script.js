@@ -20,7 +20,8 @@ let mediaRecorder = null;
 let recordedChunks = [];
 let scrollInterval = null;
 let scrollY = 0;
-let currentMode = 'camera'; // camera | imported
+let currentMode = 'camera';
+let currentVideoUrl = null;
 
 function getSupportedMimeType() {
   const types = [
@@ -28,8 +29,7 @@ function getSupportedMimeType() {
     'video/mp4',
     'video/webm;codecs=vp8,opus',
     'video/webm'
-  ];
-
+  ];n
   for (const type of types) {
     if (window.MediaRecorder && MediaRecorder.isTypeSupported(type)) {
       return type;
@@ -44,8 +44,17 @@ function getExtension(mimeType) {
 }
 
 function updateTeleprompter() {
-  teleprompterText.textContent =
-    scriptInput.value || 'Colle ton texte ici...';
+  teleprompterText.textContent = scriptInput.value || 'Colle ton texte ici...';
+}
+
+function showCamera() {
+  videoPreview.hidden = false;
+  importedVideo.hidden = true;
+}
+
+function showImportedVideo() {
+  videoPreview.hidden = true;
+  importedVideo.hidden = false;
 }
 
 async function startCamera() {
@@ -55,17 +64,15 @@ async function startCamera() {
     }
 
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: 'user'
-      },
+      video: { facingMode: 'user' },
       audio: true
     });
 
     videoPreview.srcObject = cameraStream;
     videoPreview.muted = true;
-    await videoPreview.play();
-
+    await videoPreview.play();n
     currentMode = 'camera';
+    showCamera();
   } catch (error) {
     alert("Impossible d'accéder à la caméra.");
     console.error(error);
@@ -74,48 +81,51 @@ async function startCamera() {
 
 async function ensureMicrophone() {
   if (!micStream) {
-    micStream = await navigator.mediaDevices.getUserMedia({
-      audio: true
-    });
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   }
 }
 
 function importVideo(file) {
   if (!file) return;
 
-  const url = URL.createObjectURL(file);
+  if (currentVideoUrl) {
+    URL.revokeObjectURL(currentVideoUrl);
+  }
 
-  importedVideo.src = url;
-  importedVideo.hidden = false;
+  currentVideoUrl = URL.createObjectURL(file);
+
+  importedVideo.src = currentVideoUrl;
   importedVideo.muted = true;
   importedVideo.playsInline = true;
-  importedVideo.load();
+  importedVideo.controls = true;
+  importedVideo.load();n
+  importedVideo.onloadedmetadata = async () => {
+    try {
+      showImportedVideo();n
+      await importedVideo.play();n
+      importedVideo.pause();n
+      importedVideo.currentTime = 0;
 
-  importedVideo.onloadeddata = async () => {
-    videoPreview.srcObject = null;
-    videoPreview.removeAttribute('src');
-
-    await importedVideo.play();
-    importedVideo.pause();
-    importedVideo.currentTime = 0;
+      currentMode = 'imported';
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  currentMode = 'imported';
+  videoInput.value = '';
 }
 
 function startTeleprompter() {
   stopTeleprompter();
 
-  scrollY = importedVideo.parentElement.clientHeight;
-
-  teleprompterText.style.transform =
-    `translateY(${scrollY}px)`;
+  const container = document.getElementById('teleprompterContainer');
+  scrollY = container.clientHeight;
+  teleprompterText.style.transform = `translateY(${scrollY}px)`;
 
   scrollInterval = setInterval(() => {
     const speed = Number(speedRange.value);
     scrollY -= speed;
-    teleprompterText.style.transform =
-      `translateY(${scrollY}px)`;
+    teleprompterText.style.transform = `translateY(${scrollY}px)`;
   }, 30);
 }
 
@@ -134,45 +144,35 @@ function getRecordingStream() {
 
 async function startRecording() {
   try {
-    const baseStream = getRecordingStream();
-
+    const baseStream = getRecordingStream();n
     if (!baseStream) {
       alert('Aucune source vidéo disponible.');
       return;
     }
 
     if (currentMode === 'imported') {
-      await ensureMicrophone();
+      await ensureMicrophone();n
       importedVideo.currentTime = 0;
-      await importedVideo.play();
+      await importedVideo.play();n
     }
 
     recordedChunks = [];
 
-    const finalStream = new MediaStream();
-
-    baseStream.getVideoTracks().forEach(track => {
-      finalStream.addTrack(track);
-    });
+    const finalStream = new MediaStream();n
+    baseStream.getVideoTracks().forEach(track => finalStream.addTrack(track));
 
     if (currentMode === 'camera') {
-      baseStream.getAudioTracks().forEach(track => {
-        finalStream.addTrack(track);
-      });
+      baseStream.getAudioTracks().forEach(track => finalStream.addTrack(track));
     } else {
-      micStream.getAudioTracks().forEach(track => {
-        finalStream.addTrack(track);
-      });
+      micStream.getAudioTracks().forEach(track => finalStream.addTrack(track));
     }
 
-    const mimeType = getSupportedMimeType();
-
+    const mimeType = getSupportedMimeType();n
     mediaRecorder = new MediaRecorder(finalStream, {
       mimeType,
       videoBitsPerSecond: 6000000,
       audioBitsPerSecond: 128000
-    });
-
+    });n
     mediaRecorder.ondataavailable = event => {
       if (event.data && event.data.size > 0) {
         recordedChunks.push(event.data);
@@ -180,34 +180,29 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, {
-        type: mimeType
-      });
-
+      const blob = new Blob(recordedChunks, { type: mimeType });
       const url = URL.createObjectURL(blob);
 
       downloadLink.href = url;
-      downloadLink.download =
-        `teleprompter-${Date.now()}.${getExtension(mimeType)}`;
+      downloadLink.download = `teleprompter-${Date.now()}.${getExtension(mimeType)}`;
       downloadLink.hidden = false;
-      downloadLink.textContent =
-        '⬇️ Télécharger la vidéo';
+      downloadLink.textContent = '⬇️ Télécharger la vidéo';
+
+      stopTeleprompter();
+      recordBtn.textContent = '🔴 Enregistrer';
     };
 
     mediaRecorder.start(1000);
 
     if (currentMode === 'imported') {
       importedVideo.onended = () => {
-        if (
-          mediaRecorder &&
-          mediaRecorder.state !== 'inactive'
-        ) {
-          mediaRecorder.stop();
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();n
         }
       };
     }
 
-    startTeleprompter();
+    startTeleprompter();n
     recordBtn.textContent = '⏹ Stop';
   } catch (error) {
     console.error(error);
@@ -216,10 +211,7 @@ async function startRecording() {
 }
 
 function stopRecording() {
-  if (
-    mediaRecorder &&
-    mediaRecorder.state !== 'inactive'
-  ) {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
   }
 
@@ -231,33 +223,20 @@ function stopRecording() {
   recordBtn.textContent = '🔴 Enregistrer';
 }
 
-// ===== ÉVÉNEMENTS =====
 cameraBtn.addEventListener('click', startCamera);
-
-uploadBtn.addEventListener('click', () => {
-  videoInput.click();
-});
-
-videoInput.addEventListener('change', event => {
-  importVideo(event.target.files[0]);
-});
-
+uploadBtn.addEventListener('click', () => videoInput.click());
+videoInput.addEventListener('change', event => importVideo(event.target.files[0]));
 playBtn.addEventListener('click', startTeleprompter);
 pauseBtn.addEventListener('click', stopTeleprompter);
 
 recordBtn.addEventListener('click', () => {
-  if (
-    mediaRecorder &&
-    mediaRecorder.state !== 'inactive'
-  ) {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     stopRecording();
   } else {
     startRecording();
   }
-});
-
+});n
 scriptInput.addEventListener('input', updateTeleprompter);
 
-// ===== INITIALISATION =====
 updateTeleprompter();
 startCamera();
