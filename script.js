@@ -42,8 +42,10 @@ let recordSeconds = 0;
 function setMode(mode) {
   activeMode = mode;
   const live = mode === 'live';
+
   modeLiveBtn.classList.toggle('active', live);
   modeVideoBtn.classList.toggle('active', !live);
+
   livePanel.hidden = !live;
   videoPanel.hidden = live;
 
@@ -53,6 +55,9 @@ function setMode(mode) {
   } else {
     cameraPreview.hidden = true;
     importedVideo.hidden = false;
+    if (cameraPreview.srcObject) {
+      cameraPreview.pause(); 
+    }
   }
 }
 
@@ -132,9 +137,10 @@ async function startCamera() {
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: facingMode } },
       audio: true
-    });
+    }); 
 
     cameraPreview.srcObject = cameraStream;
+    await cameraPreview.play().catch(() => {});
     setMode('live');
   } catch {
     alert("Impossible d'accéder à la caméra.");
@@ -144,6 +150,11 @@ async function startCamera() {
 function flipCamera() {
   facingMode = facingMode === 'user' ? 'environment' : 'user';
   startCamera(); 
+}
+
+function openVideoPicker() {
+  setMode('video');
+  videoInput.click(); 
 }
 
 function loadVideo(file) {
@@ -161,16 +172,17 @@ function loadVideo(file) {
   importedVideo.playsInline = true;
   importedVideo.preload = 'auto';
   importedVideo.currentTime = 0;
-  importedVideo.load(); 
 
   setMode('video');
+  importedVideo.load(); 
 
-  importedVideo.addEventListener('loadedmetadata', () => {
-    importedVideo.play().then(() => {
+  importedVideo.onloadedmetadata = async () => {
+    try {
+      await importedVideo.play(); 
       importedVideo.pause(); 
       importedVideo.currentTime = 0;
-    }).catch(() => {});
-  }, { once: true }); 
+    } catch {}
+  };
 }
 
 function stopImportedVideo() {
@@ -288,11 +300,15 @@ function applyTextToTeleprompter() {
 }
 
 modeLiveBtn.addEventListener('click', () => setMode('live'));
-modeVideoBtn.addEventListener('click', () => setMode('video'));
+modeVideoBtn.addEventListener('click', openVideoPicker);
 cameraBtn.addEventListener('click', startCamera);
 flipBtn.addEventListener('click', flipCamera);
 mirrorLiveBtn.addEventListener('click', () => toggleMirrorFor(cameraPreview));
 mirrorVideoBtn.addEventListener('click', () => toggleMirrorFor(importedVideo));
+videoPanel.querySelector('.file-btn')?.addEventListener('click', event => {
+  event.preventDefault(); 
+  openVideoPicker(); 
+}); 
 playBtn.addEventListener('click', () => {
   if (activeMode === 'video' && importedVideo.src) {
     importedVideo.play().catch(() => {});
@@ -311,7 +327,7 @@ upBtn.addEventListener('click', moveUp);
 downBtn.addEventListener('click', moveDown);
 videoInput.addEventListener('change', event => {
   const file = event.target.files && event.target.files[0]; 
-  loadVideo(file);
+  if (file) loadVideo(file);
   videoInput.value = ''; 
 }); 
 scriptInput.addEventListener('input', updateTeleprompterText);
