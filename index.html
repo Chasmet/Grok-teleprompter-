@@ -9,15 +9,12 @@
 </head>
 <body>
   <div class="app">
-
-    <!-- Écran du haut : vidéo -->
     <section class="top-screen">
       <video id="videoPreview" autoplay playsinline muted></video>
-      <video id="importedVideo" controls playsinline hidden></video>
+      <video id="importedVideo" playsinline muted hidden></video>
       <canvas id="recordCanvas" hidden></canvas>
     </section>
 
-    <!-- Écran du bas : téléprompteur -->
     <section class="bottom-screen">
       <div class="controls">
         <button id="cameraBtn">📷 Caméra</button>
@@ -34,12 +31,7 @@
         <input type="range" id="speedRange" min="1" max="10" value="3" />
       </div>
 
-      <textarea id="scriptInput" placeholder="Colle ton texte ici...">
-Bienvenue dans mon téléprompteur double écran.
-La vidéo apparaît en haut.
-Le texte défile uniquement en bas.
-Le texte n'est jamais enregistré dans la vidéo.
-      </textarea>
+      <textarea id="scriptInput" placeholder="Colle ton texte ici...">Bienvenue dans mon téléprompteur double écran.</textarea>
 
       <div id="teleprompterContainer">
         <div id="teleprompterText"></div>
@@ -47,7 +39,6 @@ Le texte n'est jamais enregistré dans la vidéo.
 
       <a id="downloadLink" hidden>Télécharger la vidéo</a>
     </section>
-
   </div>
 
   <script src="script.js"></script>
