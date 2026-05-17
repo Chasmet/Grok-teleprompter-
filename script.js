@@ -39,6 +39,16 @@ let scrollOffset = 0;
 let recordInterval = null;
 let recordSeconds = 0;
 
+function stopCameraStream() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
+  if (cameraPreview.srcObject) {
+    cameraPreview.srcObject = null;
+  }
+}
+
 function setMode(mode) {
   activeMode = mode;
   const live = mode === 'live';
@@ -53,11 +63,9 @@ function setMode(mode) {
     cameraPreview.hidden = false;
     importedVideo.hidden = true;
   } else {
+    stopCameraStream(); 
     cameraPreview.hidden = true;
     importedVideo.hidden = false;
-    if (cameraPreview.srcObject) {
-      cameraPreview.pause(); 
-    }
   }
 }
 
@@ -130,9 +138,7 @@ function stopPrompter() {
 
 async function startCamera() {
   try {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-    }
+    stopCameraStream(); 
 
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: facingMode } },
@@ -153,8 +159,19 @@ function flipCamera() {
 }
 
 function openVideoPicker() {
-  setMode('video');
-  videoInput.click(); 
+  setMode('video'); 
+
+  setTimeout(() => {
+    try {
+      if (typeof videoInput.showPicker === 'function') {
+        videoInput.showPicker(); 
+      } else {
+        videoInput.click(); 
+      }
+    } catch {
+      videoInput.click(); 
+    }
+  }, 50);
 }
 
 function loadVideo(file) {
@@ -173,15 +190,11 @@ function loadVideo(file) {
   importedVideo.preload = 'auto';
   importedVideo.currentTime = 0;
 
-  setMode('video');
+  setMode('video'); 
   importedVideo.load(); 
 
-  importedVideo.onloadedmetadata = async () => {
-    try {
-      await importedVideo.play(); 
-      importedVideo.pause(); 
-      importedVideo.currentTime = 0;
-    } catch {}
+  importedVideo.onloadedmetadata = () => {
+    importedVideo.currentTime = 0;
   };
 }
 
@@ -299,7 +312,7 @@ function applyTextToTeleprompter() {
   applyPosition(); 
 }
 
-modeLiveBtn.addEventListener('click', () => setMode('live'));
+modeLiveBtn.addEventListener('click', startCamera);
 modeVideoBtn.addEventListener('click', openVideoPicker);
 cameraBtn.addEventListener('click', startCamera);
 flipBtn.addEventListener('click', flipCamera);
