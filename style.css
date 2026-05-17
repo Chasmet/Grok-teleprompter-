@@ -25,7 +25,6 @@ body {
   height: 100vh;
 }
 
-/* ===== PARTIE HAUTE : VIDÉO / CAMÉRA ===== */
 .top-screen {
   height: 24vh;
   min-height: 140px;
@@ -43,7 +42,6 @@ body {
   display: block;
 }
 
-/* ===== PARTIE BASSE : COMMANDES + TÉLÉPROMPTEUR ===== */
 .bottom-screen {
   height: 76vh;
   display: flex;
@@ -54,7 +52,6 @@ body {
   overflow: hidden;
 }
 
-/* ===== BOUTONS ===== */
 .controls {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -62,7 +59,11 @@ body {
   flex-shrink: 0;
 }
 
-button {
+button,
+.file-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 12px;
   padding: 11px 10px;
@@ -70,9 +71,13 @@ button {
   font-weight: 700;
   color: #fff;
   background: linear-gradient(135deg, #2563eb, #7c3aed);
+  text-align: center;
+  cursor: pointer;
+  text-decoration: none;
 }
 
-button:active {
+button:active,
+.file-btn:active {
   transform: scale(0.98);
 }
 
@@ -85,7 +90,6 @@ button:disabled {
   background: linear-gradient(135deg, #dc2626, #ef4444);
 }
 
-/* ===== RÉGLAGES ===== */
 .settings {
   display: flex;
   flex-direction: column;
@@ -103,7 +107,6 @@ button:disabled {
   width: 100%;
 }
 
-/* ===== ZONE DE TEXTE ===== */
 #scriptInput {
   width: 100%;
   height: 74px;
@@ -117,7 +120,6 @@ button:disabled {
   outline: none;
 }
 
-/* ===== TÉLÉPROMPTEUR ===== */
 #teleprompterContainer {
   position: relative;
   flex: 1;
@@ -146,12 +148,10 @@ button:disabled {
   will-change: transform;
 }
 
-/* ===== MIROIR ===== */
 .mirror {
   transform: scaleX(-1) !important;
 }
 
-/* ===== LIEN DE TÉLÉCHARGEMENT ===== */
 #downloadLink {
   display: block;
   text-align: center;
@@ -163,7 +163,6 @@ button:disabled {
   font-weight: 700;
 }
 
-/* ===== MOBILE ===== */
 @media (max-width: 768px) {
   .top-screen {
     height: 22vh;
@@ -178,7 +177,8 @@ button:disabled {
     font-size: 32px;
   }
 
-  button {
+  button,
+  .file-btn {
     font-size: 14px;
     padding: 10px 8px;
   }
