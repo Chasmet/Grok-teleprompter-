@@ -29,46 +29,39 @@ const teleprompterContainer = $('teleprompterContainer');
 const livePanel           = $('livePanel');
 const videoPanel          = $('videoPanel');
 
-// ─── État global ─────────────────────────────────────────────────────────────
-let activeMode      = 'live';
-let facingMode      = 'user';
-let cameraStream    = null;
-let micStream       = null;
+let activeMode = 'live';
+let facingMode = 'user';
+let cameraStream = null;
+let micStream = null;
 let importedVideoFile = null;
-let importedVideoUrl  = null;
-let isRecording     = false;
-let downloadUrl     = null;
-let recordingMode   = null;
+let importedVideoUrl = null;
+let isRecording = false;
+let downloadUrl = null;
+let recordingMode = null;
 
-// ─── MediaRecorder natif ─────────────────────────────────────────────────────
-let mediaRecorder       = null;
-let recordedChunks      = [];
-let recordingStart      = null;
-let timerInterval       = null;
+let mediaRecorder = null;
+let recordedChunks = [];
+let recordingStart = null;
+let timerInterval = null;
 
-// ─── Canvas (mode vidéo importée) ────────────────────────────────────────────
-let offscreenCanvas     = null;
-let offscreenCtx        = null;
-let drawFrameId         = null;
+let offscreenCanvas = null;
+let offscreenCtx = null;
+let drawFrameId = null;
 
-// ─── AudioContext (mixage vidéo + micro) ─────────────────────────────────────
-let audioCtx            = null;
-let audioDestNode       = null;
-let videoAudioSource    = null;
+let audioCtx = null;
+let audioDestNode = null;
+let videoAudioSource = null;
+let micAudioSource = null;
 
-// ─── Téléprompteur ───────────────────────────────────────────────────────────
-let scrollY         = 0;
-let baseOffset      = Number(localStorage.getItem('teleprompter_base_offset') || 0);
-let scrollSpeed     = 3;
-let scrolling       = false;
-let animationFrame  = null;
-let lastTimestamp   = 0;
+let scrollY = 0;
+let baseOffset = Number(localStorage.getItem('teleprompter_base_offset') || 0);
+let scrollSpeed = 3;
+let scrolling = false;
+let animationFrame = null;
+let lastTimestamp = 0;
 
 function save(key, value) { localStorage.setItem(key, String(value)); }
-
-function formatTime(s) {
-  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-}
+function formatTime(s) { return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`; }
 
 function setStatus(message = '', level = 'info') {
   if (!statusMessage) return;
@@ -93,7 +86,10 @@ function setDownload(blob, filename, label) {
 }
 
 function resetDownload() {
-  if (downloadUrl) { URL.revokeObjectURL(downloadUrl); downloadUrl = null; }
+  if (downloadUrl) {
+    URL.revokeObjectURL(downloadUrl);
+    downloadUrl = null;
+  }
   downloadLink.removeAttribute('href');
   downloadLink.removeAttribute('download');
   downloadLink.hidden = true;
@@ -110,12 +106,7 @@ function setRecordingState(recording) {
 }
 
 function getBestMimeType() {
-  const candidates = [
-    'video/webm;codecs=vp9,opus',
-    'video/webm;codecs=vp8,opus',
-    'video/webm',
-    'video/mp4',
-  ];
+  const candidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']; 
   for (const t of candidates) {
     if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t;
   }
@@ -182,14 +173,12 @@ function loadVideo(file) {
 
 async function getMicrophoneStream() {
   if (micStream && micStream.active) return micStream;
-  micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); 
   return micStream;
 }
 
 function ensureCanvas() {
-  if (!offscreenCanvas) {
-    offscreenCanvas = document.createElement('canvas');
-  }
+  if (!offscreenCanvas) offscreenCanvas = document.createElement('canvas');
   offscreenCanvas.width = importedVideo.videoWidth || 1280;
   offscreenCanvas.height = importedVideo.videoHeight || 720;
   offscreenCtx = offscreenCanvas.getContext('2d');
@@ -203,32 +192,54 @@ function drawFrame() {
 }
 
 function stopCanvasDraw() {
-  if (drawFrameId) { cancelAnimationFrame(drawFrameId); drawFrameId = null; }
+  if (drawFrameId) {
+    cancelAnimationFrame(drawFrameId);
+    drawFrameId = null;
+  }
 }
 
-function setupAudioMix(micStreamObj) {
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
-  audioDestNode = audioCtx.createMediaStreamDestination(); 
+async function setupAudioMix(micStreamObj) {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+  }
+
+  if (audioCtx.state === 'suspended') {
+    await audioCtx.resume(); 
+  }
 
   if (!videoAudioSource) {
     videoAudioSource = audioCtx.createMediaElementSource(importedVideo);
   }
+
+  try { videoAudioSource.disconnect(); } catch (_) {}
+  if (micAudioSource) {
+    try { micAudioSource.disconnect(); } catch (_) {}
+    micAudioSource = null;
+  }
+
+  audioDestNode = audioCtx.createMediaStreamDestination(); 
+
   videoAudioSource.connect(audioCtx.destination);
   videoAudioSource.connect(audioDestNode);
 
-  const micSource = audioCtx.createMediaStreamSource(micStreamObj);
-  micSource.connect(audioDestNode);
+  micAudioSource = audioCtx.createMediaStreamSource(micStreamObj);
+  micAudioSource.connect(audioDestNode);
 }
 
-function teardownAudioMix() {
-  if (audioCtx) {
-    if (videoAudioSource) {
-      try { videoAudioSource.disconnect(); } catch (_) {}
-    }
-    audioCtx.close().catch(() => {});
-    audioCtx = null;
-    audioDestNode = null;
-    videoAudioSource = null;
+async function teardownAudioMix() {
+  if (micAudioSource) {
+    try { micAudioSource.disconnect(); } catch (_) {}
+    micAudioSource = null;
+  }
+
+  if (videoAudioSource) {
+    try { videoAudioSource.disconnect(); } catch (_) {}
+  }
+
+  audioDestNode = null;
+
+  if (audioCtx && audioCtx.state === 'running') {
+    try { await audioCtx.suspend(); } catch (_) {}
   }
 }
 
@@ -242,11 +253,13 @@ async function startRecordingVideoMode() {
   ensureCanvas(); 
 
   importedVideo.muted = false;
-  setupAudioMix(mic);
+  await setupAudioMix(mic);
 
   drawFrame(); 
 
-  if (importedVideo.paused) await importedVideo.play().catch(() => {});
+  if (importedVideo.paused) {
+    await importedVideo.play().catch(() => {});
+  }
 
   const canvasStream = offscreenCanvas.captureStream(30);
   audioDestNode.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t)); 
@@ -259,11 +272,11 @@ async function startRecordingVideoMode() {
     if (e.data && e.data.size > 0) recordedChunks.push(e.data);
   };
 
-  mediaRecorder.onstop = () => {
+  mediaRecorder.onstop = async () => {
     stopCanvasDraw(); 
     importedVideo.pause(); 
     importedVideo.muted = true;
-    teardownAudioMix(); 
+    await teardownAudioMix(); 
 
     const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
     const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' }); 
@@ -314,7 +327,10 @@ async function startRecording() {
 
     if (recordingMode === 'video') {
       const ok = await startRecordingVideoMode(); 
-      if (!ok) { recordingMode = null; return; }
+      if (!ok) {
+        recordingMode = null;
+        return;
+      }
     } else {
       await startRecordingLiveMode(); 
     }
@@ -389,7 +405,10 @@ function startScroll() {
 
 function stopScroll() {
   scrolling = false;
-  if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
+  if (animationFrame) {
+    cancelAnimationFrame(animationFrame);
+    animationFrame = null;
+  }
   lastTimestamp = 0;
 }
 
@@ -410,7 +429,10 @@ mirrorVideoBtn.addEventListener('click', () => importedVideo.classList.toggle('m
 videoInput.addEventListener('change', (e) => loadVideo(e.target.files[0]));
 playBtn.addEventListener('click', () => importedVideo.play());
 pauseBtn.addEventListener('click', () => importedVideo.pause());
-stopVideoBtn.addEventListener('click', () => { importedVideo.pause(); importedVideo.currentTime = 0; });
+stopVideoBtn.addEventListener('click', () => {
+  importedVideo.pause(); 
+  importedVideo.currentTime = 0;
+}); 
 recordBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
 applyTextBtn.addEventListener('click', toggleScroll);
@@ -419,7 +441,10 @@ downBtn.addEventListener('click', () => moveText(20));
 scriptInput.addEventListener('input', updateTeleprompterText);
 sizeRange.addEventListener('input', updateTeleprompterText);
 speedRange.addEventListener('input', () => { scrollSpeed = Number(speedRange.value); }); 
-window.addEventListener('resize', () => { normalizeTeleprompterOffset(); updateTeleprompterText(); }); 
+window.addEventListener('resize', () => {
+  normalizeTeleprompterOffset(); 
+  updateTeleprompterText(); 
+}); 
 
 (function init() {
   scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
@@ -430,17 +455,38 @@ window.addEventListener('resize', () => { normalizeTeleprompterOffset(); updateT
   stopScroll(); 
   setMode('live'); 
 
-  requestAnimationFrame(() => { normalizeTeleprompterOffset(); updateTeleprompterText(); }); 
-  setTimeout(() => { normalizeTeleprompterOffset(); updateTeleprompterText(); }, 120);
-
-  window.addEventListener('load', () => { normalizeTeleprompterOffset(); updateTeleprompterText(); }); 
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) { normalizeTeleprompterOffset(); updateTeleprompterText(); }
+  requestAnimationFrame(() => {
+    normalizeTeleprompterOffset(); 
+    updateTeleprompterText(); 
   }); 
+
+  setTimeout(() => {
+    normalizeTeleprompterOffset(); 
+    updateTeleprompterText(); 
+  }, 120);
+
+  window.addEventListener('load', () => {
+    normalizeTeleprompterOffset(); 
+    updateTeleprompterText(); 
+  }); 
+
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      normalizeTeleprompterOffset(); 
+      updateTeleprompterText(); 
+    }
+  }); 
+
   window.addEventListener('beforeunload', () => {
     stopStream(cameraStream);
     stopStream(micStream);
-    if (importedVideoUrl) { URL.revokeObjectURL(importedVideoUrl); importedVideoUrl = null; }
+    if (audioCtx) {
+      try { audioCtx.close(); } catch (_) {}
+    }
+    if (importedVideoUrl) {
+      URL.revokeObjectURL(importedVideoUrl);
+      importedVideoUrl = null;
+    }
     resetDownload(); 
   }); 
 })();
