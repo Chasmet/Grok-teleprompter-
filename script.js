@@ -1,92 +1,90 @@
 const $ = (id) => document.getElementById(id);
 
-// Éléments DOM
-const modeLiveBtn = $('modeLiveBtn');
-const modeVideoBtn = $('modeVideoBtn');
-const cameraPreview = $('cameraPreview');
-const importedVideo = $('importedVideo');
-const cameraBtn = $('cameraBtn');
-const flipBtn = $('flipBtn');
-const mirrorLiveBtn = $('mirrorLiveBtn');
-const mirrorVideoBtn = $('mirrorVideoBtn');
-const videoInput = $('videoInput');
-const playBtn = $('playBtn');
-const pauseBtn = $('pauseBtn');
-const stopVideoBtn = $('stopVideoBtn');
-const recordBtn = $('recordBtn');
-const stopBtn = $('stopBtn');
-const recordTimer = $('recordTimer');
-const downloadLink = $('downloadLink');
-const statusMessage = $('statusMessage');
-const speedRange = $('speedRange');
-const sizeRange = $('sizeRange');
-const scriptInput = $('scriptInput');
-const applyTextBtn = $('applyTextBtn');
-const upBtn = $('upBtn');
-const downBtn = $('downBtn');
-const teleprompterText = $('teleprompterText');
+// ─── Éléments DOM ───────────────────────────────────────────────────────────
+const modeLiveBtn         = $('modeLiveBtn');
+const modeVideoBtn        = $('modeVideoBtn');
+const cameraPreview       = $('cameraPreview');
+const importedVideo       = $('importedVideo');
+const cameraBtn           = $('cameraBtn');
+const flipBtn             = $('flipBtn');
+const mirrorLiveBtn       = $('mirrorLiveBtn');
+const mirrorVideoBtn      = $('mirrorVideoBtn');
+const videoInput          = $('videoInput');
+const playBtn             = $('playBtn');
+const pauseBtn            = $('pauseBtn');
+const stopVideoBtn        = $('stopVideoBtn');
+const recordBtn           = $('recordBtn');
+const stopBtn             = $('stopBtn');
+const recordTimer         = $('recordTimer');
+const downloadLink        = $('downloadLink');
+const statusMessage       = $('statusMessage');
+const speedRange          = $('speedRange');
+const sizeRange           = $('sizeRange');
+const scriptInput         = $('scriptInput');
+const applyTextBtn        = $('applyTextBtn');
+const upBtn               = $('upBtn');
+const downBtn             = $('downBtn');
+const teleprompterText    = $('teleprompterText');
 const teleprompterContainer = $('teleprompterContainer');
-const livePanel = $('livePanel');
-const videoPanel = $('videoPanel');
+const livePanel           = $('livePanel');
+const videoPanel          = $('videoPanel');
 
-// État global
-let activeMode = 'live';
-let facingMode = 'user';
-let cameraStream = null;
-let micStream = null;
+// ─── État global ─────────────────────────────────────────────────────────────
+let activeMode      = 'live';
+let facingMode      = 'user';
+let cameraStream    = null;
+let micStream       = null;
 let importedVideoFile = null;
-let importedVideoUrl = null;
-let recorder = null;
-let recordedBlob = null;
-let recordingStart = null;
-let timerInterval = null;
-let isRecording = false;
-let downloadUrl = null;
-let importedVideoRecordingStartTime = 0;
-let lastRecordingDuration = 0;
-let recordingMode = null;
+let importedVideoUrl  = null;
+let isRecording     = false;
+let downloadUrl     = null;
+let recordingMode   = null;
 
-// Téléprompteur
-let scrollY = 0;
-let baseOffset = Number(localStorage.getItem('teleprompter_base_offset') || 0);
-let scrollSpeed = 3;
-let scrolling = false;
-let animationFrame = null;
-let lastTimestamp = 0;
+// ─── MediaRecorder natif ─────────────────────────────────────────────────────
+let mediaRecorder       = null;
+let recordedChunks      = [];
+let recordingStart      = null;
+let timerInterval       = null;
 
-// FFmpeg
-let ffmpeg = null;
+// ─── Canvas (mode vidéo importée) ────────────────────────────────────────────
+let offscreenCanvas     = null;
+let offscreenCtx        = null;
+let drawFrameId         = null;
 
-function save(key, value) {
-  localStorage.setItem(key, String(value));
-}
+// ─── AudioContext (mixage vidéo + micro) ─────────────────────────────────────
+let audioCtx            = null;
+let audioDestNode       = null;
+let videoAudioSource    = null;
 
-function formatTime(seconds) {
-  const m = String(Math.floor(seconds / 60)).padStart(2, '0');
-  const s = String(seconds % 60).padStart(2, '0');
-  return `${m}:${s}`;
+// ─── Téléprompteur ───────────────────────────────────────────────────────────
+let scrollY         = 0;
+let baseOffset      = Number(localStorage.getItem('teleprompter_base_offset') || 0);
+let scrollSpeed     = 3;
+let scrolling       = false;
+let animationFrame  = null;
+let lastTimestamp   = 0;
+
+function save(key, value) { localStorage.setItem(key, String(value)); }
+
+function formatTime(s) {
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 }
 
 function setStatus(message = '', level = 'info') {
   if (!statusMessage) return;
-
   if (!message) {
     statusMessage.hidden = true;
     statusMessage.textContent = '';
     statusMessage.dataset.level = '';
     return;
   }
-
   statusMessage.textContent = message;
   statusMessage.dataset.level = level;
   statusMessage.hidden = false;
 }
 
 function setDownload(blob, filename, label) {
-  if (downloadUrl) {
-    URL.revokeObjectURL(downloadUrl);
-  }
-
+  if (downloadUrl) URL.revokeObjectURL(downloadUrl);
   downloadUrl = URL.createObjectURL(blob);
   downloadLink.href = downloadUrl;
   downloadLink.download = filename;
@@ -95,22 +93,14 @@ function setDownload(blob, filename, label) {
 }
 
 function resetDownload() {
-  if (downloadUrl) {
-    URL.revokeObjectURL(downloadUrl);
-    downloadUrl = null;
-  }
-
+  if (downloadUrl) { URL.revokeObjectURL(downloadUrl); downloadUrl = null; }
   downloadLink.removeAttribute('href');
   downloadLink.removeAttribute('download');
   downloadLink.hidden = true;
 }
 
-function applyMirror(video) {
-  if (video) video.classList.toggle('mirrored');
-}
-
 function stopStream(stream) {
-  if (stream) stream.getTracks().forEach((track) => track.stop());
+  if (stream) stream.getTracks().forEach((t) => t.stop());
 }
 
 function setRecordingState(recording) {
@@ -119,89 +109,51 @@ function setRecordingState(recording) {
   stopBtn.disabled = !recording;
 }
 
-function hasRecordRtc() {
-  return typeof window.RecordRTC !== 'undefined';
-}
-
-function hasFfmpegSupport() {
-  return Boolean(
-    (window.FFmpegWASM?.FFmpeg || window.FFmpeg?.FFmpeg) &&
-    (window.FFmpegUtil?.fetchFile || window.fetchFile)
-  );
-}
-
-function refreshRecordingAvailability() {
-  const needVideoMerge = activeMode === 'video';
-
-  if (!hasRecordRtc()) {
-    recordBtn.disabled = true;
-    setStatus("Enregistrement indisponible : bibliothèque RecordRTC non chargée.", 'error');
-    return;
+function getBestMimeType() {
+  const candidates = [
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm',
+    'video/mp4',
+  ];
+  for (const t of candidates) {
+    if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(t)) return t;
   }
-
-  if (needVideoMerge && !hasFfmpegSupport()) {
-    recordBtn.disabled = true;
-    setStatus('Mode vidéo importée indisponible : FFmpeg non chargé.', 'warning');
-    return;
-  }
-
-  recordBtn.disabled = isRecording;
-  if (!isRecording) setStatus('');
-}
-
-function normalizeTeleprompterOffset() {
-  const containerHeight = teleprompterContainer?.clientHeight || 0;
-  if (!containerHeight) return;
-
-  const maxAbs = Math.floor(containerHeight * 0.45);
-  if (baseOffset > maxAbs) baseOffset = maxAbs;
-  if (baseOffset < -maxAbs) baseOffset = -maxAbs;
-  save('teleprompter_base_offset', baseOffset);
+  return '';
 }
 
 function setMode(mode) {
   activeMode = mode;
   const isLive = mode === 'live';
-
   modeLiveBtn.classList.toggle('active', isLive);
   modeVideoBtn.classList.toggle('active', !isLive);
-
   cameraPreview.hidden = !isLive;
   importedVideo.hidden = isLive;
-
   livePanel.hidden = !isLive;
   videoPanel.hidden = isLive;
-
   if (!isLive) {
     stopStream(cameraStream);
     cameraStream = null;
     cameraPreview.srcObject = null;
   }
-
-  refreshRecordingAvailability();
+  if (!isRecording) setStatus('');
+  recordBtn.disabled = isRecording;
 }
 
 async function startCamera() {
   try {
     stopStream(cameraStream);
-
     cameraStream = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode,
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: true
+      video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: true,
     });
-
     setMode('live');
-
     cameraPreview.srcObject = cameraStream;
     cameraPreview.muted = true;
     cameraPreview.playsInline = true;
     await cameraPreview.play();
-  } catch (error) {
-    console.error(error);
+  } catch (err) {
+    console.error(err);
     alert("Impossible d'accéder à la caméra.");
   }
 }
@@ -218,96 +170,178 @@ function openVideoPicker() {
 
 function loadVideo(file) {
   if (!file) return;
-
   importedVideoFile = file;
-
   if (importedVideoUrl) URL.revokeObjectURL(importedVideoUrl);
-
   importedVideoUrl = URL.createObjectURL(file);
-
-  setMode('video');
   importedVideo.src = importedVideoUrl;
   importedVideo.muted = true;
   importedVideo.playsInline = true;
   importedVideo.load();
+  setMode('video');
 }
 
 async function getMicrophoneStream() {
   if (micStream && micStream.active) return micStream;
-
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: false
-  });
-
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
   return micStream;
 }
 
-function updateTeleprompterText() {
-  const raw = scriptInput.value || '';
-  const text = raw.trim() || 'Colle ton texte ici...';
-
-  teleprompterText.textContent = text;
-  teleprompterText.style.fontSize = `${sizeRange.value}px`;
-
-  const containerHeight = teleprompterContainer?.clientHeight || 300;
-  const y = containerHeight * 0.2 + baseOffset - scrollY;
-  teleprompterText.style.transform = `translateX(-50%) translateY(${y}px)`;
-
-  save('teleprompter_script', raw);
+function ensureCanvas() {
+  if (!offscreenCanvas) {
+    offscreenCanvas = document.createElement('canvas');
+  }
+  offscreenCanvas.width = importedVideo.videoWidth || 1280;
+  offscreenCanvas.height = importedVideo.videoHeight || 720;
+  offscreenCtx = offscreenCanvas.getContext('2d');
+  return offscreenCanvas;
 }
 
-function animateTeleprompter(timestamp) {
-  if (!scrolling) return;
-
-  if (!lastTimestamp) lastTimestamp = timestamp;
-  const delta = timestamp - lastTimestamp;
-  lastTimestamp = timestamp;
-
-  scrollY += (scrollSpeed * delta) / 30;
-  updateTeleprompterText();
-
-  animationFrame = requestAnimationFrame(animateTeleprompter);
+function drawFrame() {
+  if (!offscreenCtx) return;
+  offscreenCtx.drawImage(importedVideo, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+  drawFrameId = requestAnimationFrame(drawFrame);
 }
 
-function startScroll() {
-  if (scrolling) return;
-
-  scrolling = true;
-  lastTimestamp = 0;
-  scrollSpeed = Number(speedRange.value);
-  animationFrame = requestAnimationFrame(animateTeleprompter);
+function stopCanvasDraw() {
+  if (drawFrameId) { cancelAnimationFrame(drawFrameId); drawFrameId = null; }
 }
 
-function stopScroll() {
-  scrolling = false;
+function setupAudioMix(micStreamObj) {
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)(); 
+  audioDestNode = audioCtx.createMediaStreamDestination(); 
 
-  if (animationFrame) {
-    cancelAnimationFrame(animationFrame);
-    animationFrame = null;
+  if (!videoAudioSource) {
+    videoAudioSource = audioCtx.createMediaElementSource(importedVideo);
+  }
+  videoAudioSource.connect(audioCtx.destination);
+  videoAudioSource.connect(audioDestNode);
+
+  const micSource = audioCtx.createMediaStreamSource(micStreamObj);
+  micSource.connect(audioDestNode);
+}
+
+function teardownAudioMix() {
+  if (audioCtx) {
+    if (videoAudioSource) {
+      try { videoAudioSource.disconnect(); } catch (_) {}
+    }
+    audioCtx.close().catch(() => {});
+    audioCtx = null;
+    audioDestNode = null;
+    videoAudioSource = null;
+  }
+}
+
+async function startRecordingVideoMode() {
+  if (!importedVideoFile) {
+    alert("Importe une vidéo avant de lancer l'enregistrement.");
+    return false;
   }
 
-  lastTimestamp = 0;
+  const mic = await getMicrophoneStream(); 
+  ensureCanvas(); 
+
+  importedVideo.muted = false;
+  setupAudioMix(mic);
+
+  drawFrame(); 
+
+  if (importedVideo.paused) await importedVideo.play().catch(() => {});
+
+  const canvasStream = offscreenCanvas.captureStream(30);
+  audioDestNode.stream.getAudioTracks().forEach((t) => canvasStream.addTrack(t)); 
+
+  const mimeType = getBestMimeType(); 
+  mediaRecorder = new MediaRecorder(canvasStream, mimeType ? { mimeType } : {});
+  recordedChunks = [];
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    stopCanvasDraw(); 
+    importedVideo.pause(); 
+    importedVideo.muted = true;
+    teardownAudioMix(); 
+
+    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' }); 
+    setDownload(blob, `teleprompter-final-${Date.now()}.${ext}`, '⬇️ Télécharger la vidéo finale'); 
+    setStatus('Enregistrement terminé. Téléchargement prêt.', 'success'); 
+
+    stopStream(micStream);
+    micStream = null;
+    mediaRecorder = null;
+    recordingMode = null;
+  };
+
+  mediaRecorder.start(100);
+  return true;
 }
 
-function toggleScroll() {
-  if (scrolling) stopScroll();
-  else startScroll();
+async function startRecordingLiveMode() {
+  if (!cameraStream) await startCamera(); 
+  if (!cameraStream) throw new Error('Flux caméra indisponible.');
+
+  const mimeType = getBestMimeType(); 
+  mediaRecorder = new MediaRecorder(cameraStream, mimeType ? { mimeType } : {});
+  recordedChunks = [];
+
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  };
+
+  mediaRecorder.onstop = () => {
+    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' }); 
+    setDownload(blob, `teleprompter-live-${Date.now()}.${ext}`, '⬇️ Télécharger la vidéo'); 
+    setStatus('Enregistrement terminé. Téléchargement prêt.', 'success'); 
+    mediaRecorder = null;
+    recordingMode = null;
+  };
+
+  mediaRecorder.start(100);
 }
 
-function moveText(delta) {
-  baseOffset += delta;
-  save('teleprompter_base_offset', baseOffset);
-  updateTeleprompterText();
+async function startRecording() {
+  if (isRecording) return;
+
+  try {
+    resetDownload(); 
+    recordedChunks = [];
+    recordingMode = activeMode;
+
+    if (recordingMode === 'video') {
+      const ok = await startRecordingVideoMode(); 
+      if (!ok) { recordingMode = null; return; }
+    } else {
+      await startRecordingLiveMode(); 
+    }
+
+    setRecordingState(true); 
+    startTimer(); 
+    setStatus('Enregistrement en cours...', 'info'); 
+  } catch (err) {
+    console.error(err);
+    setRecordingState(false);
+    recordingMode = null;
+    alert('Impossible de démarrer : ' + (err.message || 'erreur inconnue'));
+  }
+}
+
+function stopRecording() {
+  if (!mediaRecorder || !isRecording) return;
+  stopTimer(); 
+  setRecordingState(false); 
+  mediaRecorder.stop(); 
 }
 
 function startTimer() {
-  recordingStart = Date.now();
+  recordingStart = Date.now(); 
   recordTimer.textContent = '00:00';
-
   timerInterval = setInterval(() => {
-    const seconds = Math.floor((Date.now() - recordingStart) / 1000);
-    recordTimer.textContent = formatTime(seconds);
+    recordTimer.textContent = formatTime(Math.floor((Date.now() - recordingStart) / 1000)); 
   }, 1000);
 }
 
@@ -316,234 +350,67 @@ function stopTimer() {
   timerInterval = null;
 }
 
-async function startRecording() {
-  if (isRecording) return;
-
-  if (!hasRecordRtc()) {
-    setStatus("La bibliothèque d'enregistrement n'est pas disponible. Vérifie ta connexion puis recharge la page.", 'error');
-    alert("La bibliothèque d'enregistrement n'est pas disponible. Vérifie ta connexion puis recharge la page.");
-    return;
-  }
-
-  if (activeMode === 'video' && !hasFfmpegSupport()) {
-    setStatus('Mode vidéo importée indisponible : FFmpeg non chargé.', 'warning');
-    alert("FFmpeg est requis pour fusionner la vidéo importée et l'audio.");
-    return;
-  }
-
-  try {
-    resetDownload();
-    recordedBlob = null;
-    lastRecordingDuration = 0;
-    recordingMode = activeMode;
-
-    if (recordingMode === 'live') {
-      if (!cameraStream) await startCamera();
-      if (!cameraStream) throw new Error('Flux caméra indisponible.');
-
-      recorder = new window.RecordRTC(cameraStream, {
-        type: 'video',
-        mimeType: 'video/webm'
-      });
-    } else {
-      if (!importedVideoFile) {
-        recordingMode = null;
-        alert("Importe une vidéo avant de lancer l'enregistrement.");
-        return;
-      }
-
-      const mic = await getMicrophoneStream();
-      importedVideoRecordingStartTime = importedVideo.currentTime || 0;
-
-      if (importedVideo.paused) {
-        await importedVideo.play().catch(() => {});
-      }
-
-      recorder = new window.RecordRTC(mic, {
-        type: 'audio',
-        mimeType: 'audio/webm'
-      });
-    }
-
-    recorder.startRecording();
-    setRecordingState(true);
-    startTimer();
-  } catch (error) {
-    console.error(error);
-    setRecordingState(false);
-    recordingMode = null;
-    alert("Impossible de démarrer l'enregistrement.");
-  }
+function normalizeTeleprompterOffset() {
+  const h = teleprompterContainer?.clientHeight || 0;
+  if (!h) return;
+  const max = Math.floor(h * 0.45);
+  baseOffset = Math.max(-max, Math.min(max, baseOffset));
+  save('teleprompter_base_offset', baseOffset);
 }
 
-async function ensureFFmpeg() {
-  if (ffmpeg) return ffmpeg;
-
-  const FFmpegClass = window.FFmpegWASM?.FFmpeg || window.FFmpeg?.FFmpeg;
-  const fetchFile = window.FFmpegUtil?.fetchFile || window.fetchFile;
-
-  if (!FFmpegClass || !fetchFile) {
-    throw new Error('FFmpeg.wasm non disponible.');
-  }
-
-  ffmpeg = new FFmpegClass();
-  await ffmpeg.load();
-  ffmpeg._fetchFile = fetchFile;
-  return ffmpeg;
+function updateTeleprompterText() {
+  const raw = scriptInput.value || '';
+  const text = raw.trim() || 'Colle ton texte ici...';
+  teleprompterText.textContent = text;
+  teleprompterText.style.fontSize = `${sizeRange.value}px`;
+  const h = teleprompterContainer?.clientHeight || 300;
+  const y = h * 0.2 + baseOffset - scrollY;
+  teleprompterText.style.transform = `translateX(-50%) translateY(${y}px)`;
+  save('teleprompter_script', raw);
 }
 
-async function cleanupFfmpegFiles(ff, files) {
-  for (const file of files) {
-    try {
-      await ff.deleteFile(file);
-    } catch (_) {}
-  }
+function animateTeleprompter(timestamp) {
+  if (!scrolling) return;
+  if (!lastTimestamp) lastTimestamp = timestamp;
+  const delta = timestamp - lastTimestamp;
+  lastTimestamp = timestamp;
+  scrollY += (scrollSpeed * delta) / 30;
+  updateTeleprompterText();
+  animationFrame = requestAnimationFrame(animateTeleprompter);
 }
 
-async function mergeVideoAndAudio(videoFile, audioBlob, startTime = 0, duration = 0) {
-  const ff = await ensureFFmpeg();
-  const fetchFile = ff._fetchFile;
-
-  const videoName = 'input-video.bin';
-  const audioName = 'input-audio.webm';
-  const outputName = 'output.mp4';
-
-  await ff.writeFile(videoName, await fetchFile(videoFile));
-  await ff.writeFile(audioName, await fetchFile(audioBlob));
-
-  const common = [];
-  if (startTime > 0) common.push('-ss', String(startTime));
-  if (duration > 0) common.push('-t', String(duration));
-
-  const fastArgs = [
-    ...common,
-    '-i', videoName,
-    '-i', audioName,
-    '-map', '0:v:0',
-    '-map', '1:a:0',
-    '-c:v', 'copy',
-    '-c:a', 'aac',
-    '-movflags', '+faststart',
-    '-shortest',
-    outputName
-  ];
-
-  try {
-    await ff.exec(fastArgs);
-  } catch (e1) {
-    try {
-      await cleanupFfmpegFiles(ff, [outputName]);
-      const safeArgs = [
-        ...common,
-        '-i', videoName,
-        '-i', audioName,
-        '-map', '0:v:0',
-        '-map', '1:a:0',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-crf', '23',
-        '-pix_fmt', 'yuv420p',
-        '-c:a', 'aac',
-        '-b:a', '128k',
-        '-movflags', '+faststart',
-        '-shortest',
-        outputName
-      ];
-      await ff.exec(safeArgs);
-    } catch (e2) {
-      console.error('FFmpeg fast path error:', e1);
-      console.error('FFmpeg fallback error:', e2);
-      throw new Error('Fusion FFmpeg impossible (codec/format non supporté).');
-    }
-  }
-
-  const data = await ff.readFile(outputName);
-  const result = new Blob([data.buffer], { type: 'video/mp4' });
-
-  await cleanupFfmpegFiles(ff, [videoName, audioName, outputName]);
-  return result;
+function startScroll() {
+  if (scrolling) return;
+  scrolling = true;
+  lastTimestamp = 0;
+  scrollSpeed = Number(speedRange.value);
+  animationFrame = requestAnimationFrame(animateTeleprompter);
 }
 
-async function stopRecording() {
-  if (!recorder || !isRecording) return;
+function stopScroll() {
+  scrolling = false;
+  if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
+  lastTimestamp = 0;
+}
 
-  lastRecordingDuration = recordingStart ? (Date.now() - recordingStart) / 1000 : 0;
-  stopTimer();
-  setRecordingState(false);
+function toggleScroll() { scrolling ? stopScroll() : startScroll(); }
 
-  recorder.stopRecording(async () => {
-    try {
-      recordedBlob = recorder.getBlob();
-
-      if (recordingMode === 'video' && importedVideoFile) {
-        importedVideo.pause();
-        setStatus('Fusion vidéo/audio en cours...', 'info');
-
-        const finalBlob = await mergeVideoAndAudio(
-          importedVideoFile,
-          recordedBlob,
-          importedVideoRecordingStartTime,
-          lastRecordingDuration
-        );
-
-        setDownload(
-          finalBlob,
-          `teleprompter-final-${Date.now()}.mp4`,
-          'Télécharger la vidéo finale'
-        );
-        setStatus('Fusion terminée. Téléchargement prêt.', 'success');
-      } else {
-        setDownload(
-          recordedBlob,
-          `teleprompter-live-${Date.now()}.webm`,
-          'Télécharger la vidéo'
-        );
-        setStatus('Enregistrement terminé. Téléchargement prêt.', 'success');
-      }
-    } catch (error) {
-      console.error(error);
-
-      if (recordedBlob) {
-        setDownload(
-          recordedBlob,
-          `teleprompter-audio-${Date.now()}.webm`,
-          "Télécharger l'audio (fusion impossible)"
-        );
-      }
-
-      setStatus(
-        "Fusion impossible sur cet appareil. L'audio brut reste disponible au téléchargement.",
-        'warning'
-      );
-
-      alert(
-        `Erreur pendant la fusion vidéo/audio.\nDétail: ${error.message || 'inconnu'}\n\nUn fichier audio brut est disponible au téléchargement.`
-      );
-    } finally {
-      if (recordingMode === 'video') {
-        stopStream(micStream);
-        micStream = null;
-      }
-
-      recorder = null;
-      recordingMode = null;
-    }
-  });
+function moveText(delta) {
+  baseOffset += delta;
+  save('teleprompter_base_offset', baseOffset);
+  updateTeleprompterText();
 }
 
 modeLiveBtn.addEventListener('click', startCamera);
 modeVideoBtn.addEventListener('click', openVideoPicker);
 cameraBtn.addEventListener('click', startCamera);
 flipBtn.addEventListener('click', flipCamera);
-mirrorLiveBtn.addEventListener('click', () => applyMirror(cameraPreview));
-mirrorVideoBtn.addEventListener('click', () => applyMirror(importedVideo));
+mirrorLiveBtn.addEventListener('click', () => cameraPreview.classList.toggle('mirrored'));
+mirrorVideoBtn.addEventListener('click', () => importedVideo.classList.toggle('mirrored'));
 videoInput.addEventListener('change', (e) => loadVideo(e.target.files[0]));
 playBtn.addEventListener('click', () => importedVideo.play());
 pauseBtn.addEventListener('click', () => importedVideo.pause());
-stopVideoBtn.addEventListener('click', () => {
-  importedVideo.pause();
-  importedVideo.currentTime = 0;
-});
+stopVideoBtn.addEventListener('click', () => { importedVideo.pause(); importedVideo.currentTime = 0; });
 recordBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
 applyTextBtn.addEventListener('click', toggleScroll);
@@ -551,59 +418,29 @@ upBtn.addEventListener('click', () => moveText(-20));
 downBtn.addEventListener('click', () => moveText(20));
 scriptInput.addEventListener('input', updateTeleprompterText);
 sizeRange.addEventListener('input', updateTeleprompterText);
-speedRange.addEventListener('input', () => {
-  scrollSpeed = Number(speedRange.value);
-});
-
-window.addEventListener('resize', () => {
-  normalizeTeleprompterOffset();
-  updateTeleprompterText();
-});
+speedRange.addEventListener('input', () => { scrollSpeed = Number(speedRange.value); }); 
+window.addEventListener('resize', () => { normalizeTeleprompterOffset(); updateTeleprompterText(); }); 
 
 (function init() {
   scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
-
-  resetDownload();
-  setRecordingState(false);
-
+  resetDownload(); 
+  setRecordingState(false); 
   scrollY = 0;
-  stopScroll();
+  scrolling = false;
+  stopScroll(); 
+  setMode('live'); 
 
-  setMode('live');
+  requestAnimationFrame(() => { normalizeTeleprompterOffset(); updateTeleprompterText(); }); 
+  setTimeout(() => { normalizeTeleprompterOffset(); updateTeleprompterText(); }, 120);
 
-  requestAnimationFrame(() => {
-    normalizeTeleprompterOffset();
-    updateTeleprompterText();
-  }); 
-
-  setTimeout(() => {
-    normalizeTeleprompterOffset();
-    updateTeleprompterText();
-  }, 120);
-
-  refreshRecordingAvailability(); 
-
-  window.addEventListener('load', () => {
-    normalizeTeleprompterOffset(); 
-    updateTeleprompterText(); 
-  }); 
-
+  window.addEventListener('load', () => { normalizeTeleprompterOffset(); updateTeleprompterText(); }); 
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      normalizeTeleprompterOffset(); 
-      updateTeleprompterText(); 
-    }
+    if (!document.hidden) { normalizeTeleprompterOffset(); updateTeleprompterText(); }
   }); 
-
   window.addEventListener('beforeunload', () => {
     stopStream(cameraStream);
     stopStream(micStream);
-
-    if (importedVideoUrl) {
-      URL.revokeObjectURL(importedVideoUrl);
-      importedVideoUrl = null;
-    }
-
+    if (importedVideoUrl) { URL.revokeObjectURL(importedVideoUrl); importedVideoUrl = null; }
     resetDownload(); 
   }); 
 })();
