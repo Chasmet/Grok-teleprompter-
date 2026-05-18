@@ -24,6 +24,7 @@ const applyTextBtn = $('applyTextBtn');
 const upBtn = $('upBtn');
 const downBtn = $('downBtn');
 const teleprompterText = $('teleprompterText');
+const teleprompterContainer = $('teleprompterContainer');
 const livePanel = $('livePanel');
 const videoPanel = $('videoPanel');
 
@@ -50,10 +51,6 @@ let lastTimestamp = 0;
 // FFmpeg
 let ffmpeg = null;
 
-// -------------------------------------------------
-// UTILITAIRES
-// -------------------------------------------------
-
 function save(key, value) {
   localStorage.setItem(key, String(value));
 }
@@ -77,14 +74,8 @@ function applyMirror(video) {
 }
 
 function stopStream(stream) {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-  }
+  if (stream) stream.getTracks().forEach(track => track.stop());
 }
-
-// -------------------------------------------------
-// MODES
-// -------------------------------------------------
 
 function setMode(mode) {
   activeMode = mode;
@@ -105,10 +96,6 @@ function setMode(mode) {
     cameraPreview.srcObject = null;
   }
 }
-
-// -------------------------------------------------
-// CAMÉRA
-// -------------------------------------------------
 
 async function startCamera() {
   try {
@@ -140,10 +127,6 @@ function flipCamera() {
   startCamera();
 }
 
-// -------------------------------------------------
-// VIDÉO IMPORTÉE
-// -------------------------------------------------
-
 function openVideoPicker() {
   setMode('video');
   videoInput.click();
@@ -165,17 +148,11 @@ function loadVideo(file) {
   importedVideo.src = importedVideoUrl;
   importedVideo.muted = true;
   importedVideo.playsInline = true;
-  importedVideo.load();
+  importedVideo.load(); 
 }
 
-// -------------------------------------------------
-// MICROPHONE
-// -------------------------------------------------
-
 async function getMicrophoneStream() {
-  if (micStream && micStream.active) {
-    return micStream;
-  }
+  if (micStream && micStream.active) return micStream;
 
   micStream = await navigator.mediaDevices.getUserMedia({
     audio: true,
@@ -185,10 +162,6 @@ async function getMicrophoneStream() {
   return micStream;
 }
 
-// -------------------------------------------------
-// TÉLÉPROMPTEUR
-// -------------------------------------------------
-
 function updateTeleprompterText() {
   const raw = scriptInput.value || '';
   const text = raw.trim() || 'Colle ton texte ici...';
@@ -196,7 +169,9 @@ function updateTeleprompterText() {
   teleprompterText.textContent = text;
   teleprompterText.style.fontSize = `${sizeRange.value}px`;
 
-  const y = window.innerHeight + baseOffset - scrollY;
+  const containerHeight = teleprompterContainer?.clientHeight || 300;
+  const y = containerHeight * 0.2 + baseOffset - scrollY;
+
   teleprompterText.style.transform = `translateX(-50%) translateY(${y}px)`;
 
   save('teleprompter_script', raw);
@@ -205,9 +180,7 @@ function updateTeleprompterText() {
 function animateTeleprompter(timestamp) {
   if (!scrolling) return;
 
-  if (!lastTimestamp) {
-    lastTimestamp = timestamp;
-  }
+  if (!lastTimestamp) lastTimestamp = timestamp;
 
   const delta = timestamp - lastTimestamp;
   lastTimestamp = timestamp;
@@ -235,6 +208,8 @@ function stopScroll() {
     cancelAnimationFrame(animationFrame);
     animationFrame = null;
   }
+
+  lastTimestamp = 0;
 }
 
 function toggleScroll() {
@@ -250,10 +225,6 @@ function moveText(delta) {
   save('teleprompter_base_offset', baseOffset);
   updateTeleprompterText();
 }
-
-// -------------------------------------------------
-// ENREGISTREMENT
-// -------------------------------------------------
 
 function startTimer() {
   recordingStart = Date.now();
@@ -274,16 +245,14 @@ async function startRecording() {
     recordedBlob = null;
 
     if (activeMode === 'live') {
-      if (!cameraStream) {
-        await startCamera();
-      }
+      if (!cameraStream) await startCamera(); 
 
       recorder = new RecordRTC(cameraStream, {
         type: 'video',
         mimeType: 'video/webm'
       });
     } else {
-      const mic = await getMicrophoneStream();
+      const mic = await getMicrophoneStream(); 
 
       if (importedVideoFile && importedVideo.paused) {
         await importedVideo.play().catch(() => {});
@@ -295,8 +264,8 @@ async function startRecording() {
       });
     }
 
-    recorder.startRecording();
-    startTimer();
+    recorder.startRecording(); 
+    startTimer(); 
   } catch (error) {
     console.error(error);
     alert('Impossible de démarrer l\'enregistrement.');
@@ -314,14 +283,14 @@ async function ensureFFmpeg() {
   }
 
   ffmpeg = new FFmpegClass();
-  await ffmpeg.load();
+  await ffmpeg.load(); 
   ffmpeg._fetchFile = fetchFile;
 
   return ffmpeg;
 }
 
 async function mergeVideoAndAudio(videoFile, audioBlob) {
-  const ff = await ensureFFmpeg();
+  const ff = await ensureFFmpeg(); 
   const fetchFile = ff._fetchFile;
 
   await ff.writeFile('video.mp4', await fetchFile(videoFile));
@@ -343,11 +312,11 @@ async function mergeVideoAndAudio(videoFile, audioBlob) {
 async function stopRecording() {
   if (!recorder) return;
 
-  stopTimer();
+  stopTimer(); 
 
   recorder.stopRecording(async () => {
     try {
-      recordedBlob = recorder.getBlob();
+      recordedBlob = recorder.getBlob(); 
 
       if (activeMode === 'video' && importedVideoFile) {
         downloadLink.textContent = 'Fusion en cours...';
@@ -357,26 +326,23 @@ async function stopRecording() {
 
         setDownload(
           finalBlob,
-          `teleprompter-final-${Date.now()}.mp4`,
+          `teleprompter-final-${Date.now()}.mp4`, 
           'Télécharger la vidéo finale'
         );
       } else {
         setDownload(
           recordedBlob,
-          `teleprompter-live-${Date.now()}.webm`,
+          `teleprompter-live-${Date.now()}.webm`, 
           'Télécharger la vidéo'
         );
       }
     } catch (error) {
       console.error(error);
       alert('Erreur pendant la fusion vidéo/audio.');
+      downloadLink.hidden = true;
     }
   });
 }
-
-// -------------------------------------------------
-// ÉVÉNEMENTS
-// -------------------------------------------------
 
 modeLiveBtn.addEventListener('click', startCamera);
 modeVideoBtn.addEventListener('click', openVideoPicker);
@@ -390,7 +356,7 @@ pauseBtn.addEventListener('click', () => importedVideo.pause());
 stopVideoBtn.addEventListener('click', () => {
   importedVideo.pause();
   importedVideo.currentTime = 0;
-});
+}); 
 recordBtn.addEventListener('click', startRecording);
 stopBtn.addEventListener('click', stopRecording);
 applyTextBtn.addEventListener('click', toggleScroll);
@@ -400,22 +366,22 @@ scriptInput.addEventListener('input', updateTeleprompterText);
 sizeRange.addEventListener('input', updateTeleprompterText);
 speedRange.addEventListener('input', () => {
   scrollSpeed = Number(speedRange.value);
-});
-
-// -------------------------------------------------
-// INITIALISATION
-// -------------------------------------------------
+}); 
 
 (function init() {
-  scriptInput.value =
-    localStorage.getItem('teleprompter_script') || scriptInput.value;
+  scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
 
   downloadLink.hidden = true;
 
+  // Réinitialisation complète du téléprompteur au démarrage.
+  scrollY = 0;
+  scrolling = false;
+  stopScroll(); 
+
   setMode('live');
-  updateTeleprompterText();
+  updateTeleprompterText(); 
 
   setTimeout(() => {
     startCamera().catch?.(() => {});
   }, 500);
-})();
+})(); 
