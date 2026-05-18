@@ -18,7 +18,6 @@ body {
   display: flex;
 }
 
-/* Respecte réellement l'attribut hidden */ 
 [hidden] {
   display: none !important;
 }
@@ -70,7 +69,6 @@ body {
   display: block;
 }
 
-/* Compatibilité avec script.js */
 video.mirrored,
 .mirror {
   transform: scaleX(-1);
@@ -190,7 +188,7 @@ button:disabled {
 
 #teleprompterText {
   position: absolute;
-  top: 100%; 
+  top: 0;
   left: 50%; 
   width: 92%; 
   white-space: pre-wrap;
