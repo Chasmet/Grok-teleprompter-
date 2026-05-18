@@ -1,0 +1,29 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/manifest.json b/manifest.json
+index df5b9e43961a3a662f6b7f54fc711675b4ccb316..004d124a7564a2fbfa53f83daa32c0658933608e 100644
+--- a/manifest.json
++++ b/manifest.json
+@@ -1,11 +1,19 @@
+ {
+   "name": "Téléprompteur Pro",
+   "short_name": "Téléprompteur",
+   "description": "Téléprompteur mobile avec mode Live et vidéo importée.",
+   "start_url": "./",
+   "display": "standalone",
+   "background_color": "#050b1f",
+   "theme_color": "#2563eb",
+   "orientation": "portrait",
+-  "lang": "fr"
++  "lang": "fr",
++  "icons": [
++    {
++      "src": "icon-512.png",
++      "sizes": "512x512",
++      "type": "image/png",
++      "purpose": "any maskable"
++    }
++  ]
+ }
+ 
+EOF
+)
