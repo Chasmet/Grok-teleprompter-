@@ -149,9 +149,6 @@ function refreshRecordingAvailability() {
   if (!isRecording) setStatus('');
 }
 
-/**
- * Évite que le texte démarre hors zone (offset mémorisé trop extrême).
- */
 function normalizeTeleprompterOffset() {
   const containerHeight = teleprompterContainer?.clientHeight || 0;
   if (!containerHeight) return;
@@ -534,7 +531,6 @@ async function stopRecording() {
   });
 }
 
-// Events
 modeLiveBtn.addEventListener('click', startCamera);
 modeVideoBtn.addEventListener('click', openVideoPicker);
 cameraBtn.addEventListener('click', startCamera);
@@ -571,7 +567,6 @@ window.addEventListener('resize', () => {
   setRecordingState(false);
 
   scrollY = 0;
-  scrolling = false;
   stopScroll();
 
   setMode('live');
@@ -579,26 +574,26 @@ window.addEventListener('resize', () => {
   requestAnimationFrame(() => {
     normalizeTeleprompterOffset();
     updateTeleprompterText();
-  });
+  }); 
 
   setTimeout(() => {
     normalizeTeleprompterOffset();
     updateTeleprompterText();
   }, 120);
 
-  refreshRecordingAvailability();
+  refreshRecordingAvailability(); 
 
   window.addEventListener('load', () => {
-    normalizeTeleprompterOffset();
-    updateTeleprompterText();
-  });
+    normalizeTeleprompterOffset(); 
+    updateTeleprompterText(); 
+  }); 
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) {
-      normalizeTeleprompterOffset();
-      updateTeleprompterText();
+      normalizeTeleprompterOffset(); 
+      updateTeleprompterText(); 
     }
-  });
+  }); 
 
   window.addEventListener('beforeunload', () => {
     stopStream(cameraStream);
@@ -609,6 +604,6 @@ window.addEventListener('resize', () => {
       importedVideoUrl = null;
     }
 
-    resetDownload();
-  });
+    resetDownload(); 
+  }); 
 })();
