@@ -1,6 +1,5 @@
 const $ = (id) => document.getElementById(id);
 
-// Éléments
 const modeLiveBtn = $('modeLiveBtn');
 const modeVideoBtn = $('modeVideoBtn');
 const cameraPreview = $('cameraPreview');
@@ -23,12 +22,10 @@ const scriptInput = $('scriptInput');
 const applyTextBtn = $('applyTextBtn');
 const upBtn = $('upBtn');
 const downBtn = $('downBtn');
-const teleprompterContainer = $('teleprompterContainer');
 const teleprompterText = $('teleprompterText');
 const livePanel = $('livePanel');
 const videoPanel = $('videoPanel');
 
-// Variables
 let activeMode = 'live';
 let facingMode = 'user';
 let cameraStream = null;
@@ -52,7 +49,7 @@ function formatTime(seconds) {
 }
 
 function applyMirror(video) {
-  video.classList.toggle('mirrored');
+  if (video) video.classList.toggle('mirrored');
 }
 
 function stopCameraStream() {
@@ -66,31 +63,34 @@ function stopCameraStream() {
 }
 
 async function startCamera() {
-  if (!navigator.mediaDevices?.getUserMedia) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     alert('Caméra non disponible sur ce navigateur.');
     return;
   }
 
   try {
-    stopCameraStream(); 
+    stopCameraStream();
 
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 }
+        facingMode: facingMode,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
       },
       audio: true
     });
 
     setMode('live');
+
     cameraPreview.srcObject = cameraStream;
     cameraPreview.muted = true;
     cameraPreview.playsInline = true;
+    cameraPreview.hidden = false;
+
     await cameraPreview.play(); 
   } catch (error) {
     console.error(error);
-    alert('Impossible d\'accéder à la caméra. Vérifie les permissions Android.');
+    alert('Impossible d\'accéder à la caméra. Vérifie les permissions caméra et micro.');
   }
 }
 
@@ -106,8 +106,8 @@ function setMode(mode) {
   modeLiveBtn?.classList.toggle('active', isLive);
   modeVideoBtn?.classList.toggle('active', !isLive);
 
-  cameraPreview.hidden = !isLive;
-  importedVideo.hidden = isLive;
+  if (cameraPreview) cameraPreview.hidden = !isLive;
+  if (importedVideo) importedVideo.hidden = isLive;
 
   if (livePanel) livePanel.hidden = !isLive;
   if (videoPanel) videoPanel.hidden = isLive;
@@ -119,15 +119,18 @@ function setMode(mode) {
 
 function openVideoPicker() {
   setMode('video');
-  try {
-    if (typeof videoInput.showPicker === 'function') {
-      videoInput.showPicker(); 
-    } else {
+
+  setTimeout(() => {
+    try {
+      if (videoInput.showPicker) {
+        videoInput.showPicker(); 
+      } else {
+        videoInput.click(); 
+      }
+    } catch (e) {
       videoInput.click(); 
     }
-  } catch {
-    videoInput.click(); 
-  }
+  }, 100);
 }
 
 function loadVideo(file) {
@@ -138,12 +141,16 @@ function loadVideo(file) {
   }
 
   activeVideoUrl = URL.createObjectURL(file);
+
   setMode('video');
 
   importedVideo.pause(); 
   importedVideo.src = activeVideoUrl;
+  importedVideo.muted = true;
+  importedVideo.playsInline = true;
+  importedVideo.controls = false;
+  importedVideo.hidden = false;
   importedVideo.load(); 
-  importedVideo.currentTime = 0;
 
   importedVideo.onloadeddata = () => {
     importedVideo.currentTime = 0;
@@ -171,7 +178,7 @@ function extractScriptText(rawText) {
     if (typeof parsed === 'string') return parsed;
     if (typeof parsed.script === 'string') return parsed.script;
     if (typeof parsed.text === 'string') return parsed.text;
-  } catch {}
+  } catch (e) {}
 
   return text;
 }
@@ -179,9 +186,13 @@ function extractScriptText(rawText) {
 function updateTeleprompterText() {
   const raw = scriptInput?.value || '';
   const finalText = extractScriptText(raw);
-  teleprompterText.textContent = finalText;
-  teleprompterText.style.fontSize = `${sizeRange.value}px`;
-  teleprompterText.style.transform = `translateY(${baseOffset - scrollPosition}px)`;
+
+  if (teleprompterText) {
+    teleprompterText.textContent = finalText;
+    teleprompterText.style.fontSize = `${sizeRange.value}px`;
+    teleprompterText.style.transform = `translateY(${baseOffset - scrollPosition}px)`;
+  }
+
   save('teleprompter_script', raw);
 }
 
@@ -201,11 +212,7 @@ function stopScroll() {
 }
 
 function toggleScroll() {
-  if (scrollInterval) {
-    stopScroll(); 
-  } else {
-    startScroll(); 
-  }
+  if (scrollInterval) stopScroll(); else startScroll(); 
 }
 
 function moveText(delta) {
@@ -222,9 +229,7 @@ function startRecording() {
 
   try {
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(cameraStream, {
-      mimeType: 'video/webm'
-    }); 
+    mediaRecorder = new MediaRecorder(cameraStream);
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) recordedChunks.push(e.data);
@@ -240,6 +245,7 @@ function startRecording() {
     };
 
     mediaRecorder.start(1000);
+
     recordSeconds = 0;
     recordTimer.textContent = '00:00';
 
@@ -258,22 +264,27 @@ function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop(); 
   }
+
   clearInterval(recordInterval);
 }
 
-// Événements
-modeLiveBtn?.addEventListener('click', startCamera);
+modeLiveBtn?.addEventListener('click', () => {
+  setMode('live');
+  startCamera(); 
+}); 
 modeVideoBtn?.addEventListener('click', openVideoPicker);
 cameraBtn?.addEventListener('click', startCamera);
 flipBtn?.addEventListener('click', flipCamera);
 mirrorLiveBtn?.addEventListener('click', () => applyMirror(cameraPreview));
 mirrorVideoBtn?.addEventListener('click', () => applyMirror(importedVideo));
 videoInput?.addEventListener('change', (e) => loadVideo(e.target.files?.[0]));
-playBtn?.addEventListener('click', () => importedVideo.play()); 
-pauseBtn?.addEventListener('click', () => importedVideo.pause()); 
+playBtn?.addEventListener('click', () => importedVideo?.play()); 
+pauseBtn?.addEventListener('click', () => importedVideo?.pause()); 
 stopVideoBtn?.addEventListener('click', () => {
-  importedVideo.pause(); 
-  importedVideo.currentTime = 0;
+  if (importedVideo) {
+    importedVideo.pause(); 
+    importedVideo.currentTime = 0;
+  }
 }); 
 recordBtn?.addEventListener('click', startRecording);
 stopBtn?.addEventListener('click', stopRecording);
@@ -283,11 +294,16 @@ downBtn?.addEventListener('click', () => moveText(20));
 scriptInput?.addEventListener('input', updateTeleprompterText);
 sizeRange?.addEventListener('input', updateTeleprompterText);
 
-// Initialisation
 (function init() {
   if (scriptInput) {
     scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
   }
+
   setMode('live');
   updateTeleprompterText(); 
+
+  // Démarrage automatique de la caméra après interaction utilisateur
+  setTimeout(() => {
+    startCamera().catch?.(() => {});
+  }, 500);
 })(); 
