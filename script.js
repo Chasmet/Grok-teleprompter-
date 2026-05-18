@@ -38,6 +38,7 @@ let scrollPosition = 0;
 let baseOffset = Number(localStorage.getItem('teleprompter_base_offset') || 0);
 let recordSeconds = 0;
 let recordInterval = null;
+let currentRecordingMode = 'live';
 
 function save(key, value) {
   localStorage.setItem(key, String(value));
@@ -54,9 +55,7 @@ function applyMirror(video) {
 }
 
 function stopStream(stream) {
-  if (stream) {
-    stream.getTracks().forEach(track => track.stop());
-  }
+  if (stream) stream.getTracks().forEach(track => track.stop());
 }
 
 function stopCameraStream() {
@@ -66,13 +65,8 @@ function stopCameraStream() {
 }
 
 async function getMicrophoneStream() {
-  if (micStream) return micStream;
-
-  micStream = await navigator.mediaDevices.getUserMedia({
-    audio: true,
-    video: false
-  }); 
-
+  if (micStream && micStream.active) return micStream;
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); 
   return micStream;
 }
 
@@ -94,7 +88,7 @@ async function startCamera() {
       audio: true
     }); 
 
-    setMode('live');
+    setMode('live'); 
 
     cameraPreview.srcObject = cameraStream;
     cameraPreview.muted = true;
@@ -130,16 +124,12 @@ function setMode(mode) {
 }
 
 function openVideoPicker() {
-  setMode('video');
+  setMode('video'); 
 
   setTimeout(() => {
     try {
-      if (videoInput?.showPicker) {
-        videoInput.showPicker(); 
-      } else {
-        videoInput?.click(); 
-      }
-    } catch (e) {
+      if (videoInput?.showPicker) videoInput.showPicker(); else videoInput?.click(); 
+    } catch {
       videoInput?.click(); 
     }
   }, 100);
@@ -149,10 +139,9 @@ function loadVideo(file) {
   if (!file) return;
 
   if (activeVideoUrl) URL.revokeObjectURL(activeVideoUrl);
-
   activeVideoUrl = URL.createObjectURL(file);
 
-  setMode('video');
+  setMode('video'); 
 
   importedVideo.pause(); 
   importedVideo.src = activeVideoUrl;
@@ -166,41 +155,17 @@ function loadVideo(file) {
     importedVideo.currentTime = 0;
   };
 
-  importedVideo.onerror = () => {
-    alert('Impossible de charger cette vidéo.');
-  };
-
   videoInput.value = '';
-}
-
-function extractScriptText(rawText) {
-  const text = (rawText || '').trim(); 
-  if (!text) return 'Colle ton texte ici...';
-
-  try {
-    const cleaned = text
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/```$/i, '')
-      .trim(); 
-
-    const parsed = JSON.parse(cleaned);
-    if (typeof parsed === 'string') return parsed;
-    if (typeof parsed.script === 'string') return parsed.script;
-    if (typeof parsed.text === 'string') return parsed.text;
-  } catch (e) {}
-
-  return text;
 }
 
 function updateTeleprompterText() {
   const raw = scriptInput?.value || '';
-  const finalText = extractScriptText(raw);
+  const finalText = raw.trim() || 'Colle ton texte ici...';
 
   if (teleprompterText) {
     teleprompterText.textContent = finalText;
     teleprompterText.style.fontSize = `${sizeRange.value}px`;
-    teleprompterText.style.transform = `translate(-50%, ${baseOffset - scrollPosition}px)`;
+    teleprompterText.style.transform = `translateX(-50%) translateY(calc(100% + ${baseOffset - scrollPosition}px))`;
   }
 
   save('teleprompter_script', raw);
@@ -210,7 +175,7 @@ function startScroll() {
   stopScroll();
   scrollInterval = setInterval(() => {
     scrollPosition += Number(speedRange.value) * 0.6;
-    updateTeleprompterText();
+    updateTeleprompterText(); 
   }, 50);
 }
 
@@ -233,16 +198,19 @@ function moveText(delta) {
 
 async function startRecording() {
   try {
+    // Détection fiable du mode actuel via la classe active.
+    const isVideoMode = modeVideoBtn?.classList.contains('active');
+    currentRecordingMode = isVideoMode ? 'video' : 'live';
+
     let streamToRecord;
 
-    if (activeMode === 'live') {
+    if (currentRecordingMode === 'live') {
       if (!cameraStream) {
         alert('Active la caméra avant d\'enregistrer.');
         return;
       }
       streamToRecord = cameraStream;
     } else {
-      // Mode vidéo importée : enregistre uniquement le micro.
       streamToRecord = await getMicrophoneStream(); 
       if (importedVideo && importedVideo.paused) {
         importedVideo.play().catch(() => {});
@@ -257,12 +225,16 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: 'audio/webm' }); 
+      const isLive = currentRecordingMode === 'live';
+      const blob = new Blob(recordedChunks, {
+        type: isLive ? 'video/webm' : 'audio/webm'
+      }); 
+
       const url = URL.createObjectURL(blob);
       downloadLink.href = url;
-      downloadLink.download = `${activeMode === 'live' ? 'teleprompter-video' : 'teleprompter-audio'}-${Date.now()}.webm`;
+      downloadLink.download = `${isLive ? 'teleprompter-video' : 'teleprompter-audio'}-${Date.now()}.webm`;
+      downloadLink.textContent = isLive ? 'Télécharger la vidéo' : 'Télécharger l\'audio';
       downloadLink.hidden = false;
-      downloadLink.textContent = activeMode === 'live' ? 'Télécharger la vidéo' : 'Télécharger l\'audio';
     };
 
     mediaRecorder.start(1000);
@@ -285,12 +257,11 @@ function stopRecording() {
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop(); 
   }
-
   clearInterval(recordInterval);
 }
 
 modeLiveBtn?.addEventListener('click', () => {
-  setMode('live');
+  setMode('live'); 
   startCamera(); 
 }); 
 modeVideoBtn?.addEventListener('click', openVideoPicker);
@@ -307,9 +278,7 @@ stopVideoBtn?.addEventListener('click', () => {
     importedVideo.currentTime = 0;
   }
 }); 
-recordBtn?.addEventListener('click', () => {
-  startRecording().catch?.(() => {});
-}); 
+recordBtn?.addEventListener('click', startRecording);
 stopBtn?.addEventListener('click', stopRecording);
 applyTextBtn?.addEventListener('click', toggleScroll);
 upBtn?.addEventListener('click', () => moveText(-20)); 
@@ -322,14 +291,12 @@ sizeRange?.addEventListener('input', updateTeleprompterText);
     scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
   }
 
-  if (downloadLink) {
-    downloadLink.hidden = true;
-  }
+  if (downloadLink) downloadLink.hidden = true;
 
-  setMode('live');
+  setMode('live'); 
   updateTeleprompterText(); 
 
   setTimeout(() => {
-    startCamera().catch?.(() => {});
+    startCamera().catch(() => {});
   }, 500);
 })(); 
