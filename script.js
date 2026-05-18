@@ -1,282 +1,293 @@
 const $ = (id) => document.getElementById(id);
 
-// =====================================================
-// ELEMENTS
-// =====================================================
-const modeLiveBtn = $("modeLiveBtn");
-const modeVideoBtn = $("modeVideoBtn");
+// Éléments
+const modeLiveBtn = $('modeLiveBtn');
+const modeVideoBtn = $('modeVideoBtn');
+const cameraPreview = $('cameraPreview');
+const importedVideo = $('importedVideo');
+const cameraBtn = $('cameraBtn');
+const flipBtn = $('flipBtn');
+const mirrorLiveBtn = $('mirrorLiveBtn');
+const mirrorVideoBtn = $('mirrorVideoBtn');
+const videoInput = $('videoInput');
+const playBtn = $('playBtn');
+const pauseBtn = $('pauseBtn');
+const stopVideoBtn = $('stopVideoBtn');
+const recordBtn = $('recordBtn');
+const stopBtn = $('stopBtn');
+const recordTimer = $('recordTimer');
+const downloadLink = $('downloadLink');
+const speedRange = $('speedRange');
+const sizeRange = $('sizeRange');
+const scriptInput = $('scriptInput');
+const applyTextBtn = $('applyTextBtn');
+const upBtn = $('upBtn');
+const downBtn = $('downBtn');
+const teleprompterContainer = $('teleprompterContainer');
+const teleprompterText = $('teleprompterText');
+const livePanel = $('livePanel');
+const videoPanel = $('videoPanel');
 
-const cameraPreview = $("cameraPreview");
-const importedVideo = $("importedVideo");
-
-const cameraBtn = $("cameraBtn");
-const flipBtn = $("flipBtn");
-const mirrorLiveBtn = $("mirrorLiveBtn");
-const mirrorVideoBtn = $("mirrorVideoBtn");
-
-const videoInput = $("videoInput");
-
-const playBtn = $("playBtn");
-const pauseBtn = $("pauseBtn");
-const stopVideoBtn = $("stopVideoBtn");
-
-const recordBtn = $("recordBtn");
-const stopBtn = $("stopBtn");
-const recordTimer = $("recordTimer");
-const downloadLink = $("downloadLink");
-
-const speedRange = $("speedRange");
-const sizeRange = $("sizeRange");
-
-const scriptInput = $("scriptInput");
-const applyTextBtn = $("applyTextBtn");
-const upBtn = $("upBtn");
-const downBtn = $("downBtn");
-
-const teleprompterText = $("teleprompterText");
-
-// =====================================================
-// VARIABLES
-// =====================================================
-let activeMode = "live";          // live | video
-let facingMode = "user";          // user | environment
+// Variables
+let activeMode = 'live';
+let facingMode = 'user';
 let cameraStream = null;
 let activeVideoUrl = null;
-
 let mediaRecorder = null;
 let recordedChunks = [];
-
 let scrollInterval = null;
-let scrollPaused = false;
-let scrollOffset = 0;
-let baseOffset = Number(localStorage.getItem("teleprompter_base_offset") || 0);
-
-let recordInterval = null;
+let scrollPosition = 0;
+let baseOffset = Number(localStorage.getItem('teleprompter_base_offset') || 0);
 let recordSeconds = 0;
+let recordInterval = null;
 
-// =====================================================
-// UTILITAIRES
-// =====================================================
 function save(key, value) {
   localStorage.setItem(key, String(value));
 }
 
 function formatTime(seconds) {
-  const m = String(Math.floor(seconds / 60)).padStart(2, "0");
-  const s = String(seconds % 60).padStart(2, "0");
+  const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+  const s = String(seconds % 60).padStart(2, '0');
   return `${m}:${s}`;
 }
 
-// =====================================================
-// CAMERA
-// =====================================================
+function applyMirror(video) {
+  video.classList.toggle('mirrored');
+}
+
 function stopCameraStream() {
   if (cameraStream) {
     cameraStream.getTracks().forEach(track => track.stop());
     cameraStream = null;
   }
-
   if (cameraPreview) {
-    cameraPreview.pause?.();
     cameraPreview.srcObject = null;
   }
 }
 
 async function startCamera() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert("Caméra non disponible.");
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert('Caméra non disponible sur ce navigateur.');
     return;
   }
 
   try {
-    stopCameraStream();
+    stopCameraStream(); 
 
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: facingMode }
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
       },
       audio: true
     });
 
-    setMode("live");
-
+    setMode('live');
     cameraPreview.srcObject = cameraStream;
-    await cameraPreview.play().catch(() => {});
+    cameraPreview.muted = true;
+    cameraPreview.playsInline = true;
+    await cameraPreview.play(); 
   } catch (error) {
-    alert("Impossible d'accéder à la caméra.");
+    console.error(error);
+    alert('Impossible d\'accéder à la caméra. Vérifie les permissions Android.');
   }
 }
 
 function flipCamera() {
-  facingMode = facingMode === "user" ? "environment" : "user";
-  startCamera();
+  facingMode = facingMode === 'user' ? 'environment' : 'user';
+  startCamera(); 
 }
 
-// =====================================================
-// MODES
-// =====================================================
 function setMode(mode) {
   activeMode = mode;
+  const isLive = mode === 'live';
 
-  const isLive = mode === "live";
+  modeLiveBtn?.classList.toggle('active', isLive);
+  modeVideoBtn?.classList.toggle('active', !isLive);
 
-  if (modeLiveBtn) modeLiveBtn.classList.toggle("active", isLive);
-  if (modeVideoBtn) modeVideoBtn.classList.toggle("active", !isLive);
+  cameraPreview.hidden = !isLive;
+  importedVideo.hidden = isLive;
 
-  if (cameraPreview) {
-    cameraPreview.hidden = !isLive;
-    cameraPreview.style.display = isLive ? "block" : "none";
-  }
+  if (livePanel) livePanel.hidden = !isLive;
+  if (videoPanel) videoPanel.hidden = isLive;
 
-  if (importedVideo) {
-    if (isLive) importedVideo.pause();
-    importedVideo.hidden = isLive;
-    importedVideo.style.display = isLive ? "none" : "block";
-  }
-
-  // En mode vidéo, on arrête toujours la caméra
   if (!isLive) {
-    stopCameraStream();
+    stopCameraStream(); 
   }
 }
 
-// =====================================================
-// IMPORT VIDEO ANDROID
-// =====================================================
 function openVideoPicker() {
-  setMode("video");
-
-  setTimeout(() => {
-    try {
-      if (typeof videoInput.showPicker === "function") {
-        videoInput.showPicker();
-      } else {
-        videoInput.click();
-      }
-    } catch (e) {
-      videoInput.click();
+  setMode('video');
+  try {
+    if (typeof videoInput.showPicker === 'function') {
+      videoInput.showPicker(); 
+    } else {
+      videoInput.click(); 
     }
-  }, 100);
+  } catch {
+    videoInput.click(); 
+  }
 }
 
 function loadVideo(file) {
-  if (!file || !importedVideo) return;
+  if (!file) return;
 
-  // Supprimer l'ancienne URL
   if (activeVideoUrl) {
     URL.revokeObjectURL(activeVideoUrl);
-    activeVideoUrl = null;
   }
 
-  // Créer une nouvelle URL locale
   activeVideoUrl = URL.createObjectURL(file);
+  setMode('video');
 
-  // Arrêter totalement la caméra
-  stopCameraStream();
-
-  // Basculer en mode vidéo
-  setMode("video");
-
-  // Réinitialiser le lecteur vidéo
-  importedVideo.pause();
-  importedVideo.removeAttribute("src");
-  importedVideo.load();
-
-  // Configuration
+  importedVideo.pause(); 
   importedVideo.src = activeVideoUrl;
-  importedVideo.muted = true;
-  importedVideo.playsInline = true;
-  importedVideo.preload = "auto";
-  importedVideo.controls = false;
+  importedVideo.load(); 
   importedVideo.currentTime = 0;
 
-  // Afficher le lecteur
-  importedVideo.hidden = false;
-  importedVideo.style.display = "block";
-
-  // Masquer totalement la caméra
-  if (cameraPreview) {
-    cameraPreview.hidden = true;
-    cameraPreview.style.display = "none";
-    cameraPreview.srcObject = null;
-  }
-
-  // Android : forcer la génération de la première image
-  importedVideo.onloadeddata = async () => {
-    try {
-      importedVideo.currentTime = 0;
-      await importedVideo.play();
-
-      setTimeout(() => {
-        importedVideo.pause();
-        importedVideo.currentTime = 0;
-      }, 100);
-    } catch (e) {
-      importedVideo.currentTime = 0;
-    }
-  };
-
-  importedVideo.oncanplay = () => {
+  importedVideo.onloadeddata = () => {
     importedVideo.currentTime = 0;
   };
 
   importedVideo.onerror = () => {
-    alert("Impossible de charger cette vidéo.");
+    alert('Impossible de charger cette vidéo.');
   };
 
-  importedVideo.load();
-
-  // Important : permet de re-sélectionner la même vidéo plus tard
-  if (videoInput) {
-    videoInput.value = "";
-  }
+  videoInput.value = '';
 }
 
-// =====================================================
-// TELEPROMPTEUR - EXTRACTION JSON
-// =====================================================
 function extractScriptText(rawText) {
-  const text = (rawText || "").trim();
-
-  if (!text) {
-    return "Colle ton texte ici...";
-  }
+  const text = (rawText || '').trim(); 
+  if (!text) return 'Colle ton texte ici...';
 
   try {
-    // Nettoyage éventuel des balises ```json
     const cleaned = text
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/```$/i, "")
-      .trim();
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```$/i, '')
+      .trim(); 
 
     const parsed = JSON.parse(cleaned);
-
-    if (typeof parsed === "string") {
-      return parsed;
-    }
-
-    if (typeof parsed.script === "string") {
-      return parsed.script;
-    }
-
-    if (typeof parsed.text === "string") {
-      return parsed.text;
-    }
-  } catch (e) {
-    // Ce n'est pas du JSON, on garde le texte brut
-  }
+    if (typeof parsed === 'string') return parsed;
+    if (typeof parsed.script === 'string') return parsed.script;
+    if (typeof parsed.text === 'string') return parsed.text;
+  } catch {}
 
   return text;
 }
 
 function updateTeleprompterText() {
-  const raw = scriptInput ? scriptInput.value : "";
+  const raw = scriptInput?.value || '';
   const finalText = extractScriptText(raw);
+  teleprompterText.textContent = finalText;
+  teleprompterText.style.fontSize = `${sizeRange.value}px`;
+  teleprompterText.style.transform = `translateY(${baseOffset - scrollPosition}px)`;
+  save('teleprompter_script', raw);
+}
 
-  if (teleprompterText) {
-    teleprompterText.textContent = finalText;
+function startScroll() {
+  stopScroll();
+  scrollInterval = setInterval(() => {
+    scrollPosition += Number(speedRange.value) * 0.6;
+    updateTeleprompterText();
+  }, 50);
+}
+
+function stopScroll() {
+  if (scrollInterval) {
+    clearInterval(scrollInterval);
+    scrollInterval = null;
+  }
+}
+
+function toggleScroll() {
+  if (scrollInterval) {
+    stopScroll(); 
+  } else {
+    startScroll(); 
+  }
+}
+
+function moveText(delta) {
+  baseOffset += delta;
+  save('teleprompter_base_offset', baseOffset);
+  updateTeleprompterText(); 
+}
+
+function startRecording() {
+  if (!cameraStream) {
+    alert('Active la caméra avant d\'enregistrer.');
+    return;
   }
 
-  save("teleprompter_script", raw);
+  try {
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(cameraStream, {
+      mimeType: 'video/webm'
+    }); 
+
+    mediaRecorder.ondataavailable = (e) => {
+      if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+    };
+
+    mediaRecorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: 'video/webm' }); 
+      const url = URL.createObjectURL(blob);
+      downloadLink.href = url;
+      downloadLink.download = `teleprompter-${Date.now()}.webm`;
+      downloadLink.hidden = false;
+      downloadLink.textContent = 'Télécharger la vidéo';
+    };
+
+    mediaRecorder.start(1000);
+    recordSeconds = 0;
+    recordTimer.textContent = '00:00';
+
+    clearInterval(recordInterval);
+    recordInterval = setInterval(() => {
+      recordSeconds++;
+      recordTimer.textContent = formatTime(recordSeconds);
+    }, 1000);
+  } catch (error) {
+    console.error(error);
+    alert('Enregistrement non supporté sur ce navigateur.');
+  }
 }
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop(); 
+  }
+  clearInterval(recordInterval);
+}
+
+// Événements
+modeLiveBtn?.addEventListener('click', startCamera);
+modeVideoBtn?.addEventListener('click', openVideoPicker);
+cameraBtn?.addEventListener('click', startCamera);
+flipBtn?.addEventListener('click', flipCamera);
+mirrorLiveBtn?.addEventListener('click', () => applyMirror(cameraPreview));
+mirrorVideoBtn?.addEventListener('click', () => applyMirror(importedVideo));
+videoInput?.addEventListener('change', (e) => loadVideo(e.target.files?.[0]));
+playBtn?.addEventListener('click', () => importedVideo.play()); 
+pauseBtn?.addEventListener('click', () => importedVideo.pause()); 
+stopVideoBtn?.addEventListener('click', () => {
+  importedVideo.pause(); 
+  importedVideo.currentTime = 0;
+}); 
+recordBtn?.addEventListener('click', startRecording);
+stopBtn?.addEventListener('click', stopRecording);
+applyTextBtn?.addEventListener('click', toggleScroll);
+upBtn?.addEventListener('click', () => moveText(-20)); 
+downBtn?.addEventListener('click', () => moveText(20)); 
+scriptInput?.addEventListener('input', updateTeleprompterText);
+sizeRange?.addEventListener('input', updateTeleprompterText);
+
+// Initialisation
+(function init() {
+  if (scriptInput) {
+    scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
+  }
+  setMode('live');
+  updateTeleprompterText(); 
+})(); 
