@@ -18,6 +18,11 @@ body {
   display: flex;
 }
 
+/* Respecte réellement l'attribut hidden */ 
+[hidden] {
+  display: none !important;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -63,6 +68,12 @@ body {
   object-fit: contain;
   background: #000000;
   display: block;
+}
+
+/* Compatibilité avec script.js */
+video.mirrored,
+.mirror {
+  transform: scaleX(-1);
 }
 
 .panel-controls {
@@ -140,7 +151,7 @@ button:disabled {
   font-weight: 700;
 }
 
-.setting input[type="range"] {
+.setting input[type='range'] {
   width: 100%; 
 }
 
@@ -181,7 +192,6 @@ button:disabled {
   position: absolute;
   top: 100%; 
   left: 50%; 
-  transform: translateX(-50%);
   width: 92%; 
   white-space: pre-wrap;
   text-align: center;
@@ -191,10 +201,6 @@ button:disabled {
   color: #ffffff;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
   will-change: transform;
-}
-
-.mirror {
-  transform: scaleX(-1);
 }
 
 #downloadLink {
