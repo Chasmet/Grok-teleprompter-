@@ -70,6 +70,20 @@ Le texte ne doit jamais sortir dans la vidéo.</textarea>
     <a id="downloadLink" hidden>Télécharger la vidéo</a>
   </div>
 
+  <!-- Bibliothèques professionnelles --> 
+  <script src="https://cdn.webrtc-experiment.com/RecordRTC.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/umd/index.js"></script>
+
+  <!-- Variables globales --> 
+  <script>
+    window.APP_LIBS = {
+      hasRecordRTC: typeof RecordRTC !== 'undefined',
+      hasFFmpeg: typeof FFmpegWASM !== 'undefined' || typeof FFmpeg !== 'undefined'
+    };
+    console.log('Bibliothèques chargées :', window.APP_LIBS);
+  </script>
+
   <script src="script.js"></script>
 </body>
 </html>
