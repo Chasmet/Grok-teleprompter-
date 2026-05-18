@@ -212,18 +212,39 @@ button:disabled {
   pointer-events: none;
 }
 
-#downloadLink {
-  display: block;
-  margin: 0 8px 8px 8px;
+#statusMessage {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: 64px;
+  z-index: 999;
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: rgba(5, 11, 31, 0.92);
+  color: #ffffff;
+  font-size: 13px;
   text-align: center;
-  padding: 12px;
+  font-weight: 600;
+}
+
+#downloadLink {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 1000;
+  display: block;
+  margin: 0;
+  text-align: center;
+  padding: 14px;
   border-radius: 14px;
   background: #16a34a;
   color: #ffffff;
   text-decoration: none;
   font-weight: 700;
   font-size: 14px;
-  flex-shrink: 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
 @media (max-width: 768px) {
