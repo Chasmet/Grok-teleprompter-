@@ -29,6 +29,7 @@ const videoPanel = $('videoPanel');
 let activeMode = 'live';
 let facingMode = 'user';
 let cameraStream = null;
+let micStream = null;
 let activeVideoUrl = null;
 let mediaRecorder = null;
 let recordedChunks = [];
@@ -52,12 +53,27 @@ function applyMirror(video) {
   if (video) video.classList.toggle('mirrored');
 }
 
-function stopCameraStream() {
-  if (cameraStream) {
-    cameraStream.getTracks().forEach(track => track.stop());
-    cameraStream = null;
+function stopStream(stream) {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
   }
+}
+
+function stopCameraStream() {
+  stopStream(cameraStream);
+  cameraStream = null;
   if (cameraPreview) cameraPreview.srcObject = null;
+}
+
+async function getMicrophoneStream() {
+  if (micStream) return micStream;
+
+  micStream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+    video: false
+  }); 
+
+  return micStream;
 }
 
 async function startCamera() {
@@ -184,7 +200,6 @@ function updateTeleprompterText() {
   if (teleprompterText) {
     teleprompterText.textContent = finalText;
     teleprompterText.style.fontSize = `${sizeRange.value}px`;
-    // Centre horizontalement + défilement vertical
     teleprompterText.style.transform = `translate(-50%, ${baseOffset - scrollPosition}px)`;
   }
 
@@ -216,34 +231,38 @@ function moveText(delta) {
   updateTeleprompterText(); 
 }
 
-function startRecording() {
-  // En mode vidéo importée, l'enregistrement caméra n'est pas normal.
-  // On affiche simplement un message clair.
-  if (activeMode !== 'live') {
-    alert('L\'enregistrement fonctionne uniquement en mode Live avec la caméra.'); 
-    return;
-  }
-
-  if (!cameraStream) {
-    alert('Active la caméra avant d\'enregistrer.');
-    return;
-  }
-
+async function startRecording() {
   try {
+    let streamToRecord;
+
+    if (activeMode === 'live') {
+      if (!cameraStream) {
+        alert('Active la caméra avant d\'enregistrer.');
+        return;
+      }
+      streamToRecord = cameraStream;
+    } else {
+      // Mode vidéo importée : enregistre uniquement le micro.
+      streamToRecord = await getMicrophoneStream(); 
+      if (importedVideo && importedVideo.paused) {
+        importedVideo.play().catch(() => {});
+      }
+    }
+
     recordedChunks = [];
-    mediaRecorder = new MediaRecorder(cameraStream);
+    mediaRecorder = new MediaRecorder(streamToRecord);
 
     mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) recordedChunks.push(e.data);
     };
 
     mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: 'video/webm' }); 
+      const blob = new Blob(recordedChunks, { type: 'audio/webm' }); 
       const url = URL.createObjectURL(blob);
       downloadLink.href = url;
-      downloadLink.download = `teleprompter-${Date.now()}.webm`;
+      downloadLink.download = `${activeMode === 'live' ? 'teleprompter-video' : 'teleprompter-audio'}-${Date.now()}.webm`;
       downloadLink.hidden = false;
-      downloadLink.textContent = 'Télécharger la vidéo';
+      downloadLink.textContent = activeMode === 'live' ? 'Télécharger la vidéo' : 'Télécharger l\'audio';
     };
 
     mediaRecorder.start(1000);
@@ -258,7 +277,7 @@ function startRecording() {
     }, 1000);
   } catch (error) {
     console.error(error);
-    alert('Enregistrement non supporté sur ce navigateur.');
+    alert('Impossible d\'accéder au microphone. Vérifie les permissions micro.');
   }
 }
 
@@ -288,7 +307,9 @@ stopVideoBtn?.addEventListener('click', () => {
     importedVideo.currentTime = 0;
   }
 }); 
-recordBtn?.addEventListener('click', startRecording);
+recordBtn?.addEventListener('click', () => {
+  startRecording().catch?.(() => {});
+}); 
 stopBtn?.addEventListener('click', stopRecording);
 applyTextBtn?.addEventListener('click', toggleScroll);
 upBtn?.addEventListener('click', () => moveText(-20)); 
