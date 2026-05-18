@@ -57,9 +57,7 @@ function stopCameraStream() {
     cameraStream.getTracks().forEach(track => track.stop());
     cameraStream = null;
   }
-  if (cameraPreview) {
-    cameraPreview.srcObject = null;
-  }
+  if (cameraPreview) cameraPreview.srcObject = null;
 }
 
 async function startCamera() {
@@ -69,7 +67,7 @@ async function startCamera() {
   }
 
   try {
-    stopCameraStream();
+    stopCameraStream(); 
 
     cameraStream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -78,7 +76,7 @@ async function startCamera() {
         height: { ideal: 720 }
       },
       audio: true
-    });
+    }); 
 
     setMode('live');
 
@@ -112,9 +110,7 @@ function setMode(mode) {
   if (livePanel) livePanel.hidden = !isLive;
   if (videoPanel) videoPanel.hidden = isLive;
 
-  if (!isLive) {
-    stopCameraStream(); 
-  }
+  if (!isLive) stopCameraStream(); 
 }
 
 function openVideoPicker() {
@@ -122,13 +118,13 @@ function openVideoPicker() {
 
   setTimeout(() => {
     try {
-      if (videoInput.showPicker) {
+      if (videoInput?.showPicker) {
         videoInput.showPicker(); 
       } else {
-        videoInput.click(); 
+        videoInput?.click(); 
       }
     } catch (e) {
-      videoInput.click(); 
+      videoInput?.click(); 
     }
   }, 100);
 }
@@ -136,9 +132,7 @@ function openVideoPicker() {
 function loadVideo(file) {
   if (!file) return;
 
-  if (activeVideoUrl) {
-    URL.revokeObjectURL(activeVideoUrl);
-  }
+  if (activeVideoUrl) URL.revokeObjectURL(activeVideoUrl);
 
   activeVideoUrl = URL.createObjectURL(file);
 
@@ -190,7 +184,8 @@ function updateTeleprompterText() {
   if (teleprompterText) {
     teleprompterText.textContent = finalText;
     teleprompterText.style.fontSize = `${sizeRange.value}px`;
-    teleprompterText.style.transform = `translateY(${baseOffset - scrollPosition}px)`;
+    // Centre horizontalement + défilement vertical
+    teleprompterText.style.transform = `translate(-50%, ${baseOffset - scrollPosition}px)`;
   }
 
   save('teleprompter_script', raw);
@@ -222,6 +217,13 @@ function moveText(delta) {
 }
 
 function startRecording() {
+  // En mode vidéo importée, l'enregistrement caméra n'est pas normal.
+  // On affiche simplement un message clair.
+  if (activeMode !== 'live') {
+    alert('L\'enregistrement fonctionne uniquement en mode Live avec la caméra.'); 
+    return;
+  }
+
   if (!cameraStream) {
     alert('Active la caméra avant d\'enregistrer.');
     return;
@@ -299,10 +301,13 @@ sizeRange?.addEventListener('input', updateTeleprompterText);
     scriptInput.value = localStorage.getItem('teleprompter_script') || scriptInput.value;
   }
 
+  if (downloadLink) {
+    downloadLink.hidden = true;
+  }
+
   setMode('live');
   updateTeleprompterText(); 
 
-  // Démarrage automatique de la caméra après interaction utilisateur
   setTimeout(() => {
     startCamera().catch?.(() => {});
   }, 500);
