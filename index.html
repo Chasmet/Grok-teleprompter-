@@ -11,7 +11,7 @@
   <meta name="apple-mobile-web-app-title" content="Grok Prompter">
   <link rel="stylesheet" href="style.css">
   <script src="facecam.js" defer></script>
-  <script src="tiny.js" defer></script>
+  <script src="tiny.js?v=3" defer></script>
 </head>
 <body>
   <div class="app">
@@ -48,7 +48,7 @@
 
       <div id="videoPanel" class="panel-controls" style="display: none;">
         <label for="videoInput" class="file-btn btn-sub">Importer</label>
-        <input type="file" id="videoInput" accept="video/*" style="display: none;">
+        <input type="file" id="videoInput" accept="video/*,image/*" style="display: none;">
         <button id="playBtn" class="btn-sub">Play</button>
         <button id="pauseBtn" class="btn-sub">Pause</button>
         <button id="mirrorVideoBtn" class="btn-sub">Miroir</button>
