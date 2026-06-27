@@ -24,7 +24,7 @@ html, body {
 
 .mode-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 8px;
   padding: 10px;
   background: #09122a;
@@ -34,8 +34,8 @@ html, body {
 .tab {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
-  padding: 10px;
-  font-size: 13px;
+  padding: 10px 6px;
+  font-size: 12px;
   font-weight: bold;
   color: #94a3b8;
   background: #1e293b;
@@ -48,12 +48,10 @@ html, body {
   border-color: transparent;
 }
 
-/* --- ZONE VIDÉO ET PROMPTEUR --- */
-
 .studio-area {
   position: relative;
-  height: 30vh; 
-  min-height: 200px; 
+  height: 30vh;
+  min-height: 200px;
   background: #000000;
   overflow: hidden;
   flex-shrink: 0;
@@ -61,14 +59,33 @@ html, body {
 }
 
 .preview-container {
+  position: relative;
   width: 100%;
   height: 100%;
+  overflow: hidden;
+  background: #000000;
 }
 
 .preview-container video {
   width: 100%;
   height: 100%;
-  object-fit: cover; 
+  object-fit: cover;
+}
+
+#cameraPreview.facecam-window {
+  position: absolute;
+  border: 2px solid #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+  z-index: 20;
+  touch-action: none;
+  background: #000000;
+}
+
+#importedVideo.facecam-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
 }
 
 video.mirrored {
@@ -81,10 +98,11 @@ video.mirrored {
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(5, 11, 31, 0.7); 
+  background: rgba(5, 11, 31, 0.7);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
   overflow: hidden;
+  pointer-events: none;
 }
 
 #teleprompterContainer::after {
@@ -108,8 +126,6 @@ video.mirrored {
   text-shadow: 0 2px 4px #000000, 0 4px 8px #000000;
   will-change: transform;
 }
-
-/* --- BARRE D'ENREGISTREMENT --- */
 
 .action-bar {
   display: flex;
@@ -135,8 +151,6 @@ video.mirrored {
   display: flex;
   gap: 8px;
 }
-
-/* --- BOUTONS --- */
 
 .btn, .btn-sub, .btn-mini, .btn-main-action, .file-btn {
   display: inline-flex;
@@ -186,12 +200,6 @@ video.mirrored {
   gap: 6px;
 }
 
-#videoPanel.panel-controls {
-  grid-template-columns: repeat(3, 1fr);
-}
-
-/* --- RÉGLAGES --- */
-
 .settings-panel {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -212,8 +220,6 @@ video.mirrored {
   width: 100%;
 }
 
-/* --- ÉDITEUR DE SCRIPT --- */
-
 .script-editor {
   padding: 4px 12px 12px 12px;
   display: flex;
@@ -231,7 +237,7 @@ video.mirrored {
   border-radius: 8px;
   padding: 10px;
   color: #ffffff;
-  font-size: 14px; 
+  font-size: 14px;
   font-family: monospace;
   resize: none;
   outline: none;
@@ -242,8 +248,6 @@ video.mirrored {
   grid-template-columns: auto auto 1fr;
   gap: 6px;
 }
-
-/* --- NOTIFICATIONS --- */
 
 #statusMessage {
   position: fixed;
@@ -271,4 +275,15 @@ video.mirrored {
   background: #10b981;
   border: none;
   padding: 12px;
+}
+
+@media (max-width: 430px) {
+  .tab {
+    font-size: 11px;
+    padding: 9px 4px;
+  }
+
+  .panel-controls {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
