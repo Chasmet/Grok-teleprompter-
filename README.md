@@ -6,7 +6,7 @@ Application web mobile pour filmer avec un téléprompteur, importer une vidéo 
 
 https://chasmet.github.io/Grok-teleprompter-/
 
-## Fonctions principales
+## Fonctions principales prévues
 
 - Téléprompteur avec texte défilant.
 - Sauvegarde automatique du texte sur le téléphone.
@@ -21,7 +21,7 @@ https://chasmet.github.io/Grok-teleprompter-/
 - Installation mobile type PWA.
 - Cache hors ligne simple avec service worker.
 
-## Utilisation rapide sur Android
+## Utilisation rapide cible sur Android
 
 1. Ouvre l'application sur GitHub Pages.
 2. Appuie sur `Caméra` et accepte caméra + micro.
@@ -39,14 +39,13 @@ https://chasmet.github.io/Grok-teleprompter-/
 - Sur Android Chrome, l'export peut sortir en `.webm` selon les capacités du téléphone.
 - Le fichier `.webm` peut être réimporté dans CapCut si besoin.
 - Le son du micro est enregistré par défaut.
-- Le son de la vidéo importée est optionnel, mais dépend du support du navigateur.
-- Par défaut, le téléprompteur est visible pour lire, mais il n'est pas gravé dans la vidéo finale. Active `Texte dans la vidéo` si tu veux l'inclure.
+- Le son de la vidéo importée dépend du support du navigateur.
+- Le mode complet `vidéo + caméra déplaçable + export canvas` doit être appliqué dans `index.html`, `style.css` et `script.js`.
 
 ## Fichiers
 
 - `index.html` : structure de l'application.
 - `style.css` : interface mobile.
-- `script.js` : caméra, canvas, téléprompteur, import vidéo, enregistrement.
+- `script.js` : caméra, téléprompteur, import vidéo, enregistrement.
 - `manifest.json` : installation PWA.
 - `sw.js` : cache hors ligne simple.
-- `icon.svg` : icône de l'application.
