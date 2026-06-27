@@ -1,19 +1,52 @@
-# Grok Teleprompter Studio
+# Grok Téléprompteur Studio
 
-Application web mobile permettant de filmer avec la caméra du téléphone ou d'importer une vidéo, tout en affichant un téléprompteur défilant.
-
-## Fonctionnalités
-
-- Téléprompteur avec texte défilant
-- Réglage de la vitesse
-- Réglage de la taille du texte
-- Mode miroir
-- Caméra avant avec enregistrement
-- Import de vidéo existante
-- Sauvegarde locale des scripts
-- Compatible Android
-- Déployable sur GitHub Pages
+Application web mobile pour filmer avec un téléprompteur, importer une vidéo montée avec CapCut, incruster la caméra en direct et enregistrer le rendu final.
 
 ## URL
 
 https://chasmet.github.io/Grok-teleprompter-/
+
+## Fonctions principales
+
+- Téléprompteur avec texte défilant.
+- Sauvegarde automatique du texte sur le téléphone.
+- Caméra avant ou arrière.
+- Mode miroir pour la caméra.
+- Import d'une vidéo locale, par exemple une vidéo exportée depuis CapCut.
+- Mode `Vidéo + caméra` avec visage incrusté par-dessus la vidéo.
+- Déplacement de la fenêtre caméra avec le doigt.
+- Réglage rapide de la taille de la caméra.
+- Formats vidéo : 9:16 TikTok, 1:1 carré, 16:9 YouTube.
+- Enregistrement du rendu final via canvas.
+- Installation mobile type PWA.
+- Cache hors ligne simple avec service worker.
+
+## Utilisation rapide sur Android
+
+1. Ouvre l'application sur GitHub Pages.
+2. Appuie sur `Caméra` et accepte caméra + micro.
+3. Appuie sur `Import CapCut` pour choisir une vidéo.
+4. Place ton visage avec le doigt dans l'aperçu.
+5. Colle ton texte en bas.
+6. Appuie sur `Texte` pour lancer le téléprompteur.
+7. Appuie sur `Enregistrer`.
+8. Appuie sur `Stop`.
+9. Appuie sur `Télécharger`.
+
+## Notes importantes
+
+- L'application fonctionne directement dans le navigateur du téléphone.
+- Sur Android Chrome, l'export peut sortir en `.webm` selon les capacités du téléphone.
+- Le fichier `.webm` peut être réimporté dans CapCut si besoin.
+- Le son du micro est enregistré par défaut.
+- Le son de la vidéo importée est optionnel, mais dépend du support du navigateur.
+- Par défaut, le téléprompteur est visible pour lire, mais il n'est pas gravé dans la vidéo finale. Active `Texte dans la vidéo` si tu veux l'inclure.
+
+## Fichiers
+
+- `index.html` : structure de l'application.
+- `style.css` : interface mobile.
+- `script.js` : caméra, canvas, téléprompteur, import vidéo, enregistrement.
+- `manifest.json` : installation PWA.
+- `sw.js` : cache hors ligne simple.
+- `icon.svg` : icône de l'application.
