@@ -8,6 +8,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const cameraPreview = document.getElementById('cameraPreview');
   const importedVideo = document.getElementById('importedVideo');
   const previewContainer = document.querySelector('.preview-container');
+  const studioArea = document.querySelector('.studio-area');
   const recordBtn = document.getElementById('recordBtn');
   const stopBtn = document.getElementById('stopBtn');
 
@@ -22,6 +23,7 @@ window.addEventListener('DOMContentLoaded', () => {
     importedVideo.muted = true;
     importedVideo.defaultMuted = true;
     importedVideo.style.display = 'block';
+    importedVideo.style.objectFit = 'contain';
     importedVideo.classList.add('facecam-bg');
     cameraPreview.style.display = cameraPreview.srcObject ? 'block' : 'none';
     cameraPreview.classList.add('facecam-window');
@@ -33,6 +35,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function setFacecamMode() {
     activeMode = 'facecam';
+    document.body.classList.add('facecam-active');
     modeLiveBtn.classList.remove('active');
     modeVideoBtn.classList.remove('active');
     modeFacecamBtn.classList.add('active');
@@ -40,9 +43,11 @@ window.addEventListener('DOMContentLoaded', () => {
     videoPanel.style.display = 'none';
     facecamPanel.style.display = 'grid';
     applyFacecam();
+    setTimeout(() => studioArea && studioArea.scrollIntoView({ block: 'start', behavior: 'smooth' }), 80);
   }
 
   function exitFacecam() {
+    document.body.classList.remove('facecam-active');
     facecamPanel.style.display = 'none';
     cameraPreview.classList.remove('facecam-window');
     importedVideo.classList.remove('facecam-bg');
