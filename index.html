@@ -3,22 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Grok Téléprompteur Studio</title>
-  
+  <title>Grok Teleprompteur Studio</title>
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#050b1f">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Grok Prompter">
-  
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div class="app">
-    
     <header class="mode-tabs">
-      <button id="modeLiveBtn" class="tab active">🔴 Mode Live</button>
-      <button id="modeVideoBtn" class="tab">🎬 Vidéo importée</button>
+      <button id="modeLiveBtn" class="tab active">Mode Live</button>
+      <button id="modeVideoBtn" class="tab">Video importee</button>
+      <button id="modeFacecamBtn" class="tab">Video + Facecam</button>
     </header>
 
     <main class="studio-area">
@@ -26,34 +24,45 @@
         <video id="cameraPreview" autoplay playsinline muted></video>
         <video id="importedVideo" playsinline muted style="display: none;"></video>
       </section>
-
       <section id="teleprompterContainer">
         <div id="teleprompterText"></div>
       </section>
     </main>
 
     <section class="action-bar">
-      <div class="timer-display">⏱️ <span id="recordTimer">00:00</span></div>
+      <div class="timer-display"><span id="recordTimer">00:00</span></div>
       <div class="record-controls">
-        <button id="recordBtn" class="btn btn-record">🔴 Rec</button>
-        <button id="stopBtn" class="btn btn-stop" disabled>⏹️ Stop</button>
+        <button id="recordBtn" class="btn btn-record">Rec</button>
+        <button id="stopBtn" class="btn btn-stop" disabled>Stop</button>
       </div>
     </section>
 
     <section class="controls-wrapper">
       <div id="livePanel" class="panel-controls">
-        <button id="cameraBtn" class="btn-sub">📷 Caméra On/Off</button>
-        <button id="flipBtn" class="btn-sub">🔄 Objectif</button>
-        <button id="mirrorLiveBtn" class="btn-sub">⇆ Miroir</button>
+        <button id="cameraBtn" class="btn-sub">Camera On/Off</button>
+        <button id="flipBtn" class="btn-sub">Objectif</button>
+        <button id="mirrorLiveBtn" class="btn-sub">Miroir</button>
       </div>
 
       <div id="videoPanel" class="panel-controls" style="display: none;">
-        <label for="videoInput" class="file-btn btn-sub">🎞️ Importer</label>
+        <label for="videoInput" class="file-btn btn-sub">Importer</label>
         <input type="file" id="videoInput" accept="video/*" style="display: none;">
-        <button id="playBtn" class="btn-sub">▶️ Play</button>
-        <button id="pauseBtn" class="btn-sub">⏸️ Pause</button>
-        <button id="mirrorVideoBtn" class="btn-sub">⇆ Miroir</button>
-        <button id="stopVideoBtn" class="btn-sub">⏹️ Reset</button>
+        <button id="playBtn" class="btn-sub">Play</button>
+        <button id="pauseBtn" class="btn-sub">Pause</button>
+        <button id="mirrorVideoBtn" class="btn-sub">Miroir</button>
+        <button id="stopVideoBtn" class="btn-sub">Reset</button>
+      </div>
+
+      <div id="facecamPanel" class="panel-controls" style="display: none;">
+        <label for="videoInput" class="file-btn btn-sub">Importer</label>
+        <button id="facecamCameraBtn" class="btn-sub">Camera</button>
+        <button id="facecamPlayBtn" class="btn-sub">Play</button>
+        <button id="facecamPauseBtn" class="btn-sub">Pause</button>
+        <button id="facecamSmallBtn" class="btn-sub">Facecam -</button>
+        <button id="facecamBigBtn" class="btn-sub">Facecam +</button>
+        <button id="facecamTopLeftBtn" class="btn-sub">Haut gauche</button>
+        <button id="facecamTopRightBtn" class="btn-sub">Haut droit</button>
+        <button id="facecamBottomRightBtn" class="btn-sub">Bas droit</button>
       </div>
     </section>
 
@@ -62,7 +71,6 @@
         <label for="speedRange">Vitesse</label>
         <input type="range" id="speedRange" min="1" max="10" value="3">
       </div>
-
       <div class="setting-row">
         <label for="sizeRange">Taille du texte</label>
         <input type="range" id="sizeRange" min="24" max="80" value="44">
@@ -70,26 +78,22 @@
     </section>
 
     <section class="script-editor">
-      <textarea id="scriptInput" spellcheck="false" placeholder="Colle ton texte ici...">Bienvenue dans Grok Téléprompteur Studio.
-La vidéo apparaît en haut.
-Le texte défile de manière fluide.
-Enregistre en Live (vidéo) ou sur fichier importé (voix off) !</textarea>
-      
+      <textarea id="scriptInput" spellcheck="false" placeholder="Colle ton texte ici...">Bienvenue dans Grok Teleprompteur Studio.
+La video apparait en haut.
+Le texte defile de maniere fluide.
+Enregistre en Live, sur video importee ou avec Video + Facecam.</textarea>
       <div class="text-micro-adjustments">
-        <button id="upBtn" class="btn-mini">⬆️ Monter</button>
-        <button id="downBtn" class="btn-mini">⬇️ Descendre</button>
-        <button id="applyTextBtn" class="btn-main-action">✅ Entrer</button>
+        <button id="upBtn" class="btn-mini">Monter</button>
+        <button id="downBtn" class="btn-mini">Descendre</button>
+        <button id="applyTextBtn" class="btn-main-action">Entrer</button>
       </div>
     </section>
 
     <p id="statusMessage" role="status" aria-live="polite" style="display: none;"></p>
-    
     <div class="download-container">
-      <a id="downloadLink" class="btn-download" style="display: none;" hidden>💾 Télécharger l'enregistrement</a>
+      <a id="downloadLink" class="btn-download" style="display: none;" hidden>Telecharger l'enregistrement</a>
     </div>
-
   </div>
-
   <script src="script.js"></script>
 </body>
 </html>
