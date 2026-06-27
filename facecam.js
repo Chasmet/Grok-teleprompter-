@@ -8,6 +8,8 @@ window.addEventListener('DOMContentLoaded', () => {
   const cameraPreview = document.getElementById('cameraPreview');
   const importedVideo = document.getElementById('importedVideo');
   const previewContainer = document.querySelector('.preview-container');
+  const recordBtn = document.getElementById('recordBtn');
+  const stopBtn = document.getElementById('stopBtn');
 
   if (!modeFacecamBtn || !facecamPanel) return;
 
@@ -30,7 +32,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   function setFacecamMode() {
-    window.activeMode = 'facecam';
+    activeMode = 'facecam';
     modeLiveBtn.classList.remove('active');
     modeVideoBtn.classList.remove('active');
     modeFacecamBtn.classList.add('active');
@@ -66,7 +68,12 @@ window.addEventListener('DOMContentLoaded', () => {
   modeLiveBtn.addEventListener('click', exitFacecam);
   modeVideoBtn.addEventListener('click', exitFacecam);
 
-  document.getElementById('facecamCameraBtn').addEventListener('click', () => document.getElementById('cameraBtn').click());
+  document.getElementById('facecamCameraBtn').addEventListener('click', () => {
+    document.getElementById('cameraBtn').click();
+    setTimeout(applyFacecam, 700);
+    setTimeout(applyFacecam, 1500);
+  });
+
   document.getElementById('facecamPlayBtn').addEventListener('click', () => { importedVideo.play(); });
   document.getElementById('facecamPauseBtn').addEventListener('click', () => { importedVideo.pause(); });
   document.getElementById('facecamSmallBtn').addEventListener('click', () => resize(-0.05));
@@ -74,6 +81,14 @@ window.addEventListener('DOMContentLoaded', () => {
   document.getElementById('facecamTopLeftBtn').addEventListener('click', () => place('tl'));
   document.getElementById('facecamTopRightBtn').addEventListener('click', () => place('tr'));
   document.getElementById('facecamBottomRightBtn').addEventListener('click', () => place('br'));
+
+  recordBtn.addEventListener('click', () => {
+    if (modeFacecamBtn.classList.contains('active')) importedVideo.play();
+  }, true);
+
+  stopBtn.addEventListener('click', () => {
+    if (modeFacecamBtn.classList.contains('active')) importedVideo.pause();
+  }, true);
 
   cameraPreview.addEventListener('pointerdown', (event) => {
     if (!modeFacecamBtn.classList.contains('active')) return;
