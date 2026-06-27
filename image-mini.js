@@ -29,7 +29,7 @@ window.addEventListener('DOMContentLoaded',()=>{
   panel.appendChild(mini);
 
   const img=new Image();
-  img.style.cssText='display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:1';
+  img.style.cssText='display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:1';
   wrap.appendChild(img);
 
   const cv=document.createElement('canvas');
@@ -39,8 +39,8 @@ window.addEventListener('DOMContentLoaded',()=>{
   function active(){return mode.classList.contains('active')}
   function fit(src,x,y,w,h){
     const sw0=src.videoWidth||src.naturalWidth||w,sh0=src.videoHeight||src.naturalHeight||h;
-    const sc=Math.max(w/sw0,h/sh0),sw=w/sc,sh=h/sc;
-    cx.drawImage(src,(sw0-sw)/2,(sh0-sh)/2,sw,sh,x,y,w,h);
+    const sc=Math.min(w/sw0,h/sh0),dw=sw0*sc,dh=sh0*sc;
+    cx.drawImage(src,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
   }
   function size(){cv.width=isImg?(img.naturalWidth||720):(vid.videoWidth||720);cv.height=isImg?(img.naturalHeight||1280):(vid.videoHeight||1280)}
   function draw(){
