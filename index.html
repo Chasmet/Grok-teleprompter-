@@ -9,9 +9,20 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Grok Prompter">
-  <link rel="stylesheet" href="style.css">
-  <script src="facecam.js" defer></script>
-  <script src="tiny.js?v=3" defer></script>
+  <link rel="stylesheet" href="style.css?v=8">
+  <style>
+    html,body{overflow-x:hidden!important;overflow-y:auto!important;min-height:100%!important}
+    .app{min-height:100dvh!important;height:auto!important}
+    .studio-area{height:56dvh!important;min-height:360px!important;max-height:620px!important;background:#000!important;overflow:hidden!important}
+    .preview-container,.preview-container video,#importedVideo.facecam-bg{background:#000!important}
+    .preview-container video,#importedVideo,#importedVideo.facecam-bg{object-fit:contain!important;object-position:center center!important}
+    #cameraPreview.facecam-window{object-fit:cover!important}
+    body.facecam-active #teleprompterContainer{display:none!important}
+    body.facecam-active .studio-area{height:58dvh!important;min-height:380px!important}
+    body.facecam-active .preview-container img{object-fit:contain!important;background:#000!important}
+  </style>
+  <script src="facecam.js?v=4" defer></script>
+  <script src="image-mini.js?v=4" defer></script>
 </head>
 <body>
   <div class="app">
@@ -96,6 +107,6 @@ Enregistre en Live, sur video importee ou avec Video + Facecam.</textarea>
       <a id="downloadLink" class="btn-download" style="display: none;" hidden>Telecharger l'enregistrement</a>
     </div>
   </div>
-  <script src="script.js"></script>
+  <script src="script.js?v=8"></script>
 </body>
 </html>
