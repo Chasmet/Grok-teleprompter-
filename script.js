@@ -160,14 +160,13 @@ async function startRecording() {
 
     streamToRecord = new MediaStream();
     importedStream.getVideoTracks().forEach((track) => streamToRecord.addTrack(track));
-    importedStream.getAudioTracks().forEach((track) => streamToRecord.addTrack(track));
 
     try {
       audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioStream.getAudioTracks().forEach((track) => streamToRecord.addTrack(track));
     } catch (err) {
       console.warn(err);
-      setStatus('Micro refusé : vidéo sans voix off', 'error');
+      setStatus('Micro refusé', 'error');
     }
   }
 
