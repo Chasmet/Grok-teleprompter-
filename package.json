@@ -1,0 +1,12 @@
+{
+  "name": "grok-teleprompter-studio",
+  "version": "2.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/static-audit.test.mjs",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1"
+  }
+}

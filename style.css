@@ -52,19 +52,30 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   border-bottom: 3px solid var(--blue);
 }
 .stage { position: relative; overflow: hidden; background: #000; box-shadow: 0 0 0 1px rgba(255,255,255,.08); touch-action: none; }
-.stage video, .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
-.stage .liveCamera { object-fit: cover; }
+.stage > video, .stage > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
 .stage .mirrored { transform: scaleX(-1); }
 .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 18px; text-align: center; color: #94a3b8; font-weight: 900; line-height: 1.5; }
-.face { z-index: 10; border: 3px solid #fff; border-radius: 14px; box-shadow: 0 8px 26px rgba(0,0,0,.7); object-fit: cover !important; touch-action: none; }
-.face.mirrored { transform: scaleX(-1); }
+.faceFrame { position: absolute; z-index: 10; overflow: hidden; border: 3px solid #fff; border-radius: 14px; background: #111; box-shadow: 0 8px 26px rgba(0,0,0,.7); touch-action: none; user-select: none; }
+.faceFrame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #111; pointer-events: none; }
+.faceFrame.liveCamera { inset: 0 !important; width: 100% !important; height: 100% !important; border: 0; border-radius: 0; box-shadow: none; touch-action: auto; }
+.faceFrame.liveCamera video { object-fit: cover; }
+.moveBadge { position: absolute; left: 7px; top: 7px; z-index: 4; display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: rgba(0,0,0,.68); color: #fff; font-size: 17px; pointer-events: none; }
+.resizeHandle { position: absolute; right: 3px; bottom: 3px; z-index: 6; display: grid; width: 36px; height: 36px; place-items: center; border: 2px solid #fff; border-radius: 50%; background: #2563eb; color: #fff; font-size: 19px; font-weight: 900; touch-action: none; }
+.faceFrame.liveCamera .moveBadge, .faceFrame.liveCamera .resizeHandle { display: none; }
+body[data-mode="facecam"] .faceFrame { z-index: 50; }
 
-.teleprompter { position: absolute; left: 4%; right: 4%; top: 8%; bottom: 14%; z-index: 40; display: flex; align-items: center; justify-content: center; pointer-events: none; overflow: hidden; border-radius: 18px; background: linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.42)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.1); }
+.teleprompter { position: absolute; left: 5%; top: 9%; z-index: 40; display: block; width: 90%; height: 72%; pointer-events: auto; overflow: hidden; border: 2px dashed rgba(96,165,250,.72); border-radius: 18px; background: linear-gradient(180deg,rgba(0,0,0,.12),rgba(0,0,0,.45)); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); touch-action: none; user-select: none; }
 .teleprompter::before, .teleprompter::after { content: ""; position: absolute; left: 0; right: 0; height: 23%; z-index: 2; pointer-events: none; }
 .teleprompter::before { top: 0; background: linear-gradient(#000c, #0000); }
 .teleprompter::after { bottom: 0; background: linear-gradient(#0000, #000c); }
-.teleText { width: 100%; padding: 28px 18px; color: #fff; font-weight: 900; line-height: 1.28; text-align: center; text-shadow: 0 4px 12px #000, 0 0 22px #000; white-space: pre-wrap; will-change: transform; }
+.teleText { position: absolute; left: 0; top: 50%; z-index: 1; width: 100%; padding: 30px 18px; color: #fff; font-weight: 900; line-height: 1.28; text-align: center; text-shadow: 0 4px 12px #000, 0 0 22px #000; white-space: pre-wrap; will-change: transform; pointer-events: none; }
 .teleGuide { position: absolute; left: 7%; right: 7%; top: 50%; height: 2px; z-index: 3; background: linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent); opacity: .75; }
+.teleMoveHandle { position: absolute; left: 50%; top: 5px; z-index: 6; padding: 5px 10px; transform: translateX(-50%); border-radius: 999px; background: rgba(37,99,235,.9); color: #fff; font-size: 10px; font-weight: 900; white-space: nowrap; pointer-events: none; }
+.teleResizeHandle { background: #7c3aed; }
+
+.gestureHelp { display: grid; gap: 3px; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.07); background: #081027; color: #9fb5d5; text-align: center; font-size: 10px; font-weight: 800; }
+body:not([data-mode="facecam"]) .gestureHelp span:first-child { display: none; }
+body[data-mode="media"] .gestureHelp, body[data-mode="media"] .teleControls { display: none; }
 
 .recordBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid rgba(255,255,255,.06); }
 .timer { width: max-content; padding: 8px 12px; border-radius: 10px; background: rgba(239,68,68,.16); color: #ff5b68; font-family: monospace; font-weight: 900; font-size: 20px; }
@@ -95,7 +106,14 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .controls { padding-bottom: 4px; }
 .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 12px 0; }
 .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 12px 0; }
+.row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 8px 12px 0; }
 body:not([data-mode="facecam"]) .faceControls { display: none; }
+.cameraHelp { margin: 10px 12px 0; padding: 12px; border: 1px solid rgba(248,113,113,.55); border-radius: 12px; background: rgba(127,29,29,.28); }
+.cameraHelp p { color: #fecaca; font-size: 13px; font-weight: 800; line-height: 1.4; }
+.cameraHelpActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.cameraHelpActions .btn { min-height: 44px; }
+.controlTitle { padding: 12px 12px 0; color: #aab4c3; font-size: 13px; font-weight: 900; }
+.resetLayout { width: calc(100% - 24px); min-height: 40px; margin: 8px 12px 0; border: 1px solid rgba(255,255,255,.12); border-radius: 9px; background: transparent; color: #93c5fd; font-weight: 800; }
 
 .audioCard { margin: 10px 12px 0; padding: 12px; border: 1px solid rgba(37,99,235,.45); border-radius: 12px; background: rgba(15,23,42,.92); }
 .audioHeader { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; color: #dbeafe; font-size: 12px; font-weight: 800; }
@@ -120,7 +138,9 @@ textarea { width: calc(100% - 24px); min-height: 130px; margin: 7px 12px 0; padd
 .status { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; z-index: 100; display: none; max-width: calc(100% - 24px); padding: 10px 16px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.16); border-radius: 999px; background: #0f172a; font-weight: 900; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hide { display: none !important; }
 
-body.recording .top, body.recording .controls, body.recording .settings, body.recording textarea { opacity: .62; }
+body.recording .top, body.recording .controls, body.recording .settings, body.recording textarea { opacity: .62; pointer-events: none; }
+body.recording .teleprompter { pointer-events: none; border-color: transparent; }
+body.recording .teleMoveHandle, body.recording .resizeHandle, body.recording .moveBadge { display: none; }
 
 @media (max-width: 430px) {
   .viewer { height: 50dvh; min-height: 325px; }
@@ -129,8 +149,9 @@ body.recording .top, body.recording .controls, body.recording .settings, body.re
   .btn, label.btn { min-height: 50px; font-size: 14px; }
   .rec { min-width: 105px; }
   .timer { font-size: 18px; }
-  .teleprompter { left: 3%; right: 3%; top: 7%; bottom: 12%; border-radius: 14px; }
+  .teleprompter { border-radius: 14px; }
   .teleText { padding: 22px 12px; line-height: 1.23; }
+  .row4 .btn { min-height: 46px; padding: 6px 3px; font-size: 12px; }
 }
 
 @media (max-width: 360px) {

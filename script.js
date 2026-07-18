@@ -4,24 +4,35 @@
   const $ = (id) => document.getElementById(id);
   const elements = {
     stage: $('stage'), viewer: $('viewer'), empty: $('empty'), mediaVideo: $('mediaVideo'),
-    mediaImage: $('mediaImage'), cameraVideo: $('cameraVideo'), mediaInput: $('mediaInput'),
+    mediaImage: $('mediaImage'), cameraVideo: $('cameraVideo'), faceFrame: $('faceFrame'),
+    faceResizeHandle: $('faceResizeHandle'), mediaInput: $('mediaInput'),
     download: $('download'), status: $('status'), timer: $('timer'), teleprompter: $('teleprompter'),
     teleText: $('teleText'), scriptInput: $('scriptInput'), speedRange: $('speedRange'),
     sizeRange: $('sizeRange'), liveTab: $('liveTab'), mediaTab: $('mediaTab'), faceTab: $('faceTab'),
     recBtn: $('recBtn'), stopBtn: $('stopBtn'), cameraBtn: $('cameraBtn'), flipBtn: $('flipBtn'),
     mirrorBtn: $('mirrorBtn'), playBtn: $('playBtn'), pauseBtn: $('pauseBtn'), audioMode: $('audioMode'),
     videoQuality: $('videoQuality'), includeMediaAudio: $('includeMediaAudio'), audioMeter: $('audioMeter'),
-    audioPeak: $('audioPeak'), audioLabel: $('audioLabel'), recordQuality: $('recordQuality')
+    audioPeak: $('audioPeak'), audioLabel: $('audioLabel'), recordQuality: $('recordQuality'),
+    cameraHelp: $('cameraHelp'), cameraHelpText: $('cameraHelpText'), retryCameraBtn: $('retryCameraBtn'),
+    cameraSettingsBtn: $('cameraSettingsBtn'), teleMoveHandle: $('teleMoveHandle'),
+    teleResizeHandle: $('teleResizeHandle'), teleScrollState: $('teleScrollState'),
+    textUpBtn: $('textUpBtn'), textDownBtn: $('textDownBtn'), textSmallerBtn: $('textSmallerBtn'),
+    textLargerBtn: $('textLargerBtn'), resetLayoutBtn: $('resetLayoutBtn')
   };
+
+  const DEFAULT_FACE = { x: .05, y: .05, w: .36, h: .25 };
+  const DEFAULT_TELE_BOX = { x: .05, y: .09, w: .90, h: .72 };
 
   const state = {
     mode: 'facecam', mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '',
-    cameraStream: null, micOnlyStream: null, recorder: null, chunks: [], recordingBlob: null,
+    cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, facingMode: 'user', mirrored: true,
-    face: { x: .05, y: .05, w: .28, h: .16 },
+    face: { ...DEFAULT_FACE }, facePointers: new Map(), faceGesture: null,
+    teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
+    teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
-    panStart: null, lastTap: 0, faceDrag: false, faceDx: 0, faceDy: 0,
+    panStart: null, lastTap: 0,
     teleRaf: 0, teleStartedAt: 0, teleRunning: false, downloadUrl: ''
   };
 
@@ -42,6 +53,9 @@
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const selectedProfile = () => AUDIO_PROFILES[elements.audioMode.value] || AUDIO_PROFILES.studio;
+  const liveTracks = (stream, kind) => stream?.getTracks().filter((track) => track.kind === kind && track.readyState === 'live') || [];
+  const hasLiveCamera = () => liveTracks(state.cameraStream, 'video').length > 0;
+  const hasLiveMicrophone = () => liveTracks(state.micOnlyStream, 'audio').length > 0;
 
   function audioConstraints() {
     const profile = selectedProfile();
@@ -68,7 +82,7 @@
 
   function updateAudioLabel() {
     const profile = selectedProfile();
-    const track = state.cameraStream?.getAudioTracks()[0] || state.micOnlyStream?.getAudioTracks()[0];
+    const track = liveTracks(state.micOnlyStream, 'audio')[0] || liveTracks(state.cameraStream, 'audio')[0];
     if (!track) {
       elements.audioLabel.textContent = `${profile.label} · micro non activé`;
       return;
@@ -90,13 +104,17 @@
     elements.mediaTab.classList.toggle('active', state.mode === 'media');
     elements.faceTab.classList.toggle('active', state.mode === 'facecam');
     document.body.dataset.mode = state.mode;
-    const cameraVisible = (state.mode === 'live' || state.mode === 'facecam') && state.cameraStream;
-    elements.cameraVideo.classList.toggle('hide', !cameraVisible);
-    elements.cameraVideo.classList.toggle('face', state.mode === 'facecam');
-    elements.cameraVideo.classList.toggle('liveCamera', state.mode === 'live');
+    const cameraVisible = (state.mode === 'live' || state.mode === 'facecam') && hasLiveCamera();
+    elements.faceFrame.classList.toggle('hide', !cameraVisible);
+    elements.faceFrame.classList.toggle('liveCamera', state.mode === 'live');
+    elements.flipBtn.disabled = !hasLiveCamera();
+    elements.mirrorBtn.disabled = !hasLiveCamera();
+    for (const id of ['minusBtn', 'plusBtn', 'tlBtn', 'trBtn', 'brBtn']) $(id).disabled = !hasLiveCamera();
     updateTeleVisibility();
     layoutFace();
+    layoutTeleprompter();
     updateMirror();
+    updateEmptyVisibility();
   }
 
   function setMode(mode) {
@@ -140,10 +158,19 @@
 
   function layoutFace() {
     const face = state.face;
-    elements.cameraVideo.style.left = `${face.x * 100}%`;
-    elements.cameraVideo.style.top = `${face.y * 100}%`;
-    elements.cameraVideo.style.width = `${face.w * 100}%`;
-    elements.cameraVideo.style.height = `${face.h * 100}%`;
+    elements.faceFrame.style.left = `${face.x * 100}%`;
+    elements.faceFrame.style.top = `${face.y * 100}%`;
+    elements.faceFrame.style.width = `${face.w * 100}%`;
+    elements.faceFrame.style.height = `${face.h * 100}%`;
+  }
+
+  function layoutTeleprompter() {
+    const box = state.teleBox;
+    elements.teleprompter.style.left = `${box.x * 100}%`;
+    elements.teleprompter.style.top = `${box.y * 100}%`;
+    elements.teleprompter.style.width = `${box.w * 100}%`;
+    elements.teleprompter.style.height = `${box.h * 100}%`;
+    if (!state.teleRunning) requestAnimationFrame(updateTeleScrollMode);
   }
 
   function moveFace(position) {
@@ -152,6 +179,7 @@
     if (position === 'tr') { state.face.x = 1 - state.face.w - margin; state.face.y = margin; }
     if (position === 'br') { state.face.x = 1 - state.face.w - margin; state.face.y = 1 - state.face.h - margin; }
     layoutFace();
+    saveScript();
   }
 
   function resizeFace(delta) {
@@ -160,6 +188,7 @@
     state.face.x = clamp(state.face.x, 0, 1 - state.face.w);
     state.face.y = clamp(state.face.y, 0, 1 - state.face.h);
     layoutFace();
+    saveScript();
   }
 
   function applyMediaView() {
@@ -193,51 +222,181 @@
   function pointerCenter(a, b) { return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
 
   function displayImportedMedia() {
-    const hasMedia = Boolean(state.mediaType);
-    elements.empty.classList.toggle('hide', hasMedia);
     elements.mediaImage.classList.toggle('hide', state.mediaType !== 'image');
     elements.mediaVideo.classList.toggle('hide', state.mediaType !== 'video');
+    elements.playBtn.disabled = state.mediaType !== 'video';
+    elements.pauseBtn.disabled = state.mediaType !== 'video';
+    updateEmptyVisibility();
+  }
+
+  function updateEmptyVisibility() {
+    const promptVisible = teleHasText() && (state.mode === 'live' || state.mode === 'facecam');
+    const shouldHide = state.mode === 'live' || Boolean(state.mediaType) || promptVisible || hasLiveCamera();
+    elements.empty.classList.toggle('hide', shouldHide);
   }
 
   function teleHasText() { return Boolean(elements.scriptInput.value.trim()); }
   function updateTeleVisibility() {
     const visible = teleHasText() && (state.mode === 'live' || state.mode === 'facecam');
     elements.teleprompter.classList.toggle('hide', !visible);
+    updateEmptyVisibility();
+  }
+  function updateTeleScrollMode() {
+    if (elements.teleprompter.classList.contains('hide')) return false;
+    const availableHeight = Math.max(1, elements.teleprompter.clientHeight - 44);
+    const preferredSize = clamp(Number(elements.sizeRange.value) || 36, 18, 86);
+    elements.teleText.style.fontSize = `${preferredSize}px`;
+    let textHeight = Math.max(1, elements.teleText.scrollHeight);
+    const wordCount = elements.scriptInput.value.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount <= 34 && textHeight > availableHeight) {
+      const fittedSize = clamp(Math.floor(preferredSize * availableHeight / textHeight), 18, preferredSize);
+      elements.teleText.style.fontSize = `${fittedSize}px`;
+      textHeight = Math.max(1, elements.teleText.scrollHeight);
+    }
+    state.teleShouldScroll = textHeight > availableHeight;
+    elements.teleprompter.dataset.scrollMode = state.teleShouldScroll ? 'scroll' : 'static';
+    elements.teleScrollState.textContent = state.teleShouldScroll
+      ? 'Texte long : défilement automatique'
+      : 'Texte court : reste fixe';
+    if (!state.teleRunning) positionTeleTextAtRest();
+    return state.teleShouldScroll;
+  }
+  function positionTeleTextAtRest() {
+    const textHeight = Math.max(1, elements.teleText.scrollHeight);
+    if (state.teleShouldScroll) {
+      elements.teleText.style.top = '55%';
+      elements.teleText.style.transform = 'translateY(0px)';
+    } else {
+      elements.teleText.style.top = '50%';
+      elements.teleText.style.transform = `translateY(${-textHeight / 2}px)`;
+    }
   }
   function updateTeleText(reset = false) {
     elements.teleText.textContent = elements.scriptInput.value.trim() || 'Écris ton texte ici.';
-    elements.teleText.style.fontSize = `${clamp(Number(elements.sizeRange.value) || 36, 20, 78)}px`;
-    if (reset) elements.teleText.style.transform = 'translateY(0)';
+    elements.teleText.style.fontSize = `${clamp(Number(elements.sizeRange.value) || 36, 18, 86)}px`;
     updateTeleVisibility();
+    requestAnimationFrame(() => {
+      updateTeleScrollMode();
+      if (reset) positionTeleTextAtRest();
+    });
   }
   function stopTeleprompter(reset = false) {
     state.teleRunning = false;
     if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
     state.teleRaf = 0;
-    if (reset) elements.teleText.style.transform = 'translateY(0)';
+    if (reset) positionTeleTextAtRest();
   }
   function startTeleprompter() {
     updateTeleText(true);
     if (!teleHasText() || state.mode === 'media') return;
+    updateTeleScrollMode();
+    if (!state.teleShouldScroll) {
+      state.teleRunning = false;
+      positionTeleTextAtRest();
+      return;
+    }
     state.teleRunning = true;
     state.teleStartedAt = performance.now();
+    elements.teleText.style.top = '55%';
     const loop = (now) => {
       if (!state.teleRunning) return;
       const speed = 10 + clamp(Number(elements.speedRange.value) || 3, 1, 10) * 9;
       const elapsed = (now - state.teleStartedAt) / 1000;
-      const maxMove = Math.max(0, elements.teleText.scrollHeight + elements.teleprompter.clientHeight * .58);
+      const maxMove = Math.max(0, elements.teleText.scrollHeight + elements.teleprompter.clientHeight * .55);
       elements.teleText.style.transform = `translateY(${-Math.min(maxMove, elapsed * speed)}px)`;
-      state.teleRaf = requestAnimationFrame(loop);
+      if (elapsed * speed < maxMove) state.teleRaf = requestAnimationFrame(loop);
+      else state.teleRunning = false;
     };
     state.teleRaf = requestAnimationFrame(loop);
   }
 
-  async function stopCameraTracks() {
-    [state.cameraStream, state.micOnlyStream].forEach((stream) => stream?.getTracks().forEach((track) => track.stop()));
+  function applyTeleFont(value) {
+    elements.sizeRange.value = String(clamp(
+      Math.round(value),
+      Number(elements.sizeRange.min),
+      Number(elements.sizeRange.max)
+    ));
+    updateTeleText(false);
+    saveScript();
+  }
+
+  async function stopCameraVideo() {
+    state.cameraStream?.getTracks().forEach((track) => track.stop());
     state.cameraStream = null;
-    state.micOnlyStream = null;
     elements.cameraVideo.srcObject = null;
+    elements.cameraBtn.textContent = 'Activer la caméra';
+    updateTabs();
+  }
+
+  async function stopCameraTracks() {
+    await stopCameraVideo();
+    state.micOnlyStream?.getTracks().forEach((track) => track.stop());
+    state.micOnlyStream = null;
     stopLiveMeter();
+    updateAudioLabel();
+  }
+
+  function cameraFailureText(error) {
+    if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
+      return 'L’autorisation caméra est refusée. Appuie sur « Réglages Android », puis autorise Caméra et Microphone.';
+    }
+    if (error?.name === 'NotReadableError' || error?.name === 'AbortError') {
+      return 'La caméra est occupée ou bloquée. Ferme Appareil photo, WhatsApp, Grok ou toute autre application utilisant la caméra, puis appuie sur « Réessayer ».';
+    }
+    if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
+      return 'Aucune caméra n’a été détectée sur le téléphone.';
+    }
+    return `Impossible d’ouvrir la caméra (${error?.name || 'erreur inconnue'}). Redémarre l’application puis réessaie.`;
+  }
+
+  function showCameraHelp(error) {
+    elements.cameraHelpText.textContent = cameraFailureText(error);
+    elements.cameraHelp.classList.remove('hide');
+    console.error('Échec caméra', error);
+  }
+
+  async function cameraConstraintAttempts() {
+    const high = elements.videoQuality.value === '1080';
+    const attempts = [
+      videoConstraints(),
+      {
+        facingMode: { ideal: state.facingMode },
+        width: { ideal: high ? 1280 : 960 },
+        height: { ideal: high ? 720 : 540 },
+        frameRate: { ideal: 30, max: 30 }
+      },
+      { facingMode: { ideal: state.facingMode } },
+      true
+    ];
+
+    if (navigator.mediaDevices.enumerateDevices) {
+      try {
+        const devices = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'videoinput');
+        const wanted = state.facingMode === 'user' ? /front|avant|user|face/i : /back|rear|arrière|environment/i;
+        devices.sort((a, b) => Number(wanted.test(b.label)) - Number(wanted.test(a.label)));
+        for (const device of devices.slice(0, 3)) {
+          if (device.deviceId) attempts.push({ deviceId: { exact: device.deviceId } });
+        }
+      } catch (_) {}
+    }
+    return attempts;
+  }
+
+  async function openCameraVideo() {
+    const attempts = await cameraConstraintAttempts();
+    let lastError = null;
+    for (let index = 0; index < attempts.length; index += 1) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: attempts[index], audio: false });
+        if (liveTracks(stream, 'video').length) return stream;
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (error) {
+        lastError = error;
+        if (error.name === 'NotAllowedError' || error.name === 'SecurityError') break;
+        await delay(error.name === 'NotReadableError' ? 450 : 180);
+      }
+    }
+    throw lastError || new Error('CameraUnavailable');
   }
 
   async function startCamera() {
@@ -246,37 +405,54 @@
       return;
     }
     elements.cameraBtn.disabled = true;
-    await stopCameraTracks();
+    elements.cameraBtn.textContent = 'Ouverture…';
+    elements.cameraHelp.classList.add('hide');
+    await stopCameraVideo();
+    await delay(320);
     try {
-      state.cameraStream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints(), audio: audioConstraints() });
-    } catch (firstError) {
-      try {
-        state.cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: state.facingMode }, audio: true });
-        showStatus('Mode compatible activé : certains traitements dépendent du téléphone');
-      } catch (error) {
-        const denied = error.name === 'NotAllowedError' || error.name === 'SecurityError';
-        showStatus(denied ? 'Autorise la caméra et le micro dans les réglages' : `Caméra indisponible : ${error.name || 'erreur'}`, true, 5000);
-        elements.cameraBtn.disabled = false;
-        return;
-      }
+      state.cameraStream = await openCameraVideo();
+    } catch (error) {
+      showCameraHelp(error);
+      showStatus('Caméra non ouverte · consulte l’aide rouge', true, 5000);
+      elements.cameraBtn.disabled = false;
+      elements.cameraBtn.textContent = 'Réessayer la caméra';
+      updateTabs();
+      return;
     }
-    const audioTrack = state.cameraStream.getAudioTracks()[0];
-    if (audioTrack) audioTrack.contentHint = elements.audioMode.value === 'music' ? 'music' : 'speech';
     const videoTrack = state.cameraStream.getVideoTracks()[0];
-    if (videoTrack) videoTrack.contentHint = 'motion';
+    if (videoTrack) {
+      videoTrack.contentHint = 'motion';
+      videoTrack.addEventListener('ended', () => {
+        if (state.cameraStream && !hasLiveCamera()) {
+          elements.cameraBtn.textContent = 'Réactiver la caméra';
+          updateTabs();
+        }
+      });
+    }
     elements.cameraVideo.srcObject = state.cameraStream;
-    await elements.cameraVideo.play().catch(() => {});
+    try {
+      await elements.cameraVideo.play();
+    } catch (error) {
+      await stopCameraVideo();
+      showCameraHelp(error);
+      showStatus('La caméra ne peut pas afficher l’image', true, 5000);
+      elements.cameraBtn.disabled = false;
+      elements.cameraBtn.textContent = 'Réessayer la caméra';
+      return;
+    }
     elements.cameraBtn.disabled = false;
     elements.cameraBtn.textContent = 'Caméra activée';
     updateTabs();
+    const microphone = await ensureMicrophone();
     updateAudioLabel();
-    startLiveMeter(state.cameraStream);
-    showStatus('Caméra et micro prêts');
+    if (microphone) startLiveMeter(microphone);
+    showStatus(microphone ? 'Caméra et micro prêts' : 'Caméra prête · micro non disponible', !microphone, 4200);
   }
 
   async function ensureMicrophone() {
-    if (state.cameraStream?.getAudioTracks().length) return state.cameraStream;
-    if (state.micOnlyStream?.getAudioTracks().length) return state.micOnlyStream;
+    if (hasLiveMicrophone()) return state.micOnlyStream;
+    state.micOnlyStream?.getTracks().forEach((track) => track.stop());
+    state.micOnlyStream = null;
     try {
       state.micOnlyStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(), video: false });
       const track = state.micOnlyStream.getAudioTracks()[0];
@@ -284,7 +460,9 @@
       updateAudioLabel();
       return state.micOnlyStream;
     } catch (error) {
-      showStatus('Autorise le micro pour enregistrer ta voix', true, 4500);
+      showStatus(error.name === 'NotReadableError'
+        ? 'Micro occupé par une autre application'
+        : 'Autorise le micro pour enregistrer ta voix', true, 4500);
       return null;
     }
   }
@@ -518,7 +696,17 @@
     document.body.classList.toggle('recording', recording);
     elements.recBtn.disabled = recording;
     elements.stopBtn.disabled = !recording;
-    [elements.liveTab, elements.mediaTab, elements.faceTab, elements.mediaInput, elements.cameraBtn, elements.flipBtn, elements.audioMode, elements.videoQuality].forEach((item) => { item.disabled = recording; });
+    [
+      elements.liveTab, elements.mediaTab, elements.faceTab, elements.mediaInput,
+      elements.cameraBtn, elements.flipBtn, elements.mirrorBtn, elements.audioMode,
+      elements.videoQuality, elements.playBtn, elements.pauseBtn, elements.textUpBtn,
+      elements.textDownBtn, elements.textSmallerBtn, elements.textLargerBtn,
+      elements.resetLayoutBtn
+    ].forEach((item) => { item.disabled = recording; });
+    if (!recording) {
+      displayImportedMedia();
+      updateTabs();
+    }
   }
 
   function updateTimer() {
@@ -531,9 +719,9 @@
       showStatus('Enregistrement non compatible avec ce navigateur', true, 5000);
       return;
     }
-    if (state.mode === 'live' && !state.cameraStream) { showStatus('Active d’abord la caméra', true); return; }
+    if (state.mode === 'live' && !hasLiveCamera()) { showStatus('Active d’abord la caméra', true); return; }
     if (state.mode !== 'live' && !state.mediaType) { showStatus('Importe d’abord une vidéo ou une image', true); return; }
-    if (state.mode === 'facecam' && !state.cameraStream) { showStatus('Active d’abord la caméra', true); return; }
+    if (state.mode === 'facecam' && !hasLiveCamera()) { showStatus('Active d’abord la caméra', true); return; }
 
     state.chunks = [];
     state.recordingBlob = null;
@@ -546,7 +734,7 @@
     const audioGraph = await buildAudioGraph();
     if (!audioGraph?.stream?.getAudioTracks().length) {
       showStatus('Aucune piste audio disponible', true, 4500);
-      if (state.cameraStream) startLiveMeter(state.cameraStream);
+      if (state.micOnlyStream) startLiveMeter(state.micOnlyStream);
       return;
     }
     state.audioGraph = audioGraph;
@@ -610,7 +798,7 @@
     releaseWakeLock();
     setRecordingUi(false);
     updateAudioLabel();
-    const meterStream = state.cameraStream || state.micOnlyStream;
+    const meterStream = state.micOnlyStream || state.cameraStream;
     if (meterStream) startLiveMeter(meterStream);
   }
 
@@ -685,7 +873,26 @@
       localStorage.setItem('grokTeleprompterScript', elements.scriptInput.value);
       localStorage.setItem('grokTeleprompterAudio', elements.audioMode.value);
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
+      localStorage.setItem('grokTeleprompterSpeed', elements.speedRange.value);
+      localStorage.setItem('grokTeleprompterSize', elements.sizeRange.value);
+      localStorage.setItem('grokTeleprompterLayout', JSON.stringify({
+        face: state.face,
+        teleBox: state.teleBox,
+        mirrored: state.mirrored
+      }));
     } catch (_) {}
+  }
+
+  function restoreBox(value, fallback, minWidth, minHeight) {
+    if (!value || typeof value !== 'object') return { ...fallback };
+    const width = clamp(Number(value.w) || fallback.w, minWidth, 1);
+    const height = clamp(Number(value.h) || fallback.h, minHeight, 1);
+    return {
+      x: clamp(Number(value.x) || 0, 0, 1 - width),
+      y: clamp(Number(value.y) || 0, 0, 1 - height),
+      w: width,
+      h: height
+    };
   }
 
   function restorePreferences() {
@@ -693,9 +900,17 @@
       const script = localStorage.getItem('grokTeleprompterScript');
       const audio = localStorage.getItem('grokTeleprompterAudio');
       const quality = localStorage.getItem('grokTeleprompterQuality');
+      const speed = localStorage.getItem('grokTeleprompterSpeed');
+      const size = localStorage.getItem('grokTeleprompterSize');
+      const layout = JSON.parse(localStorage.getItem('grokTeleprompterLayout') || 'null');
       if (script !== null) elements.scriptInput.value = script;
       if (audio && AUDIO_PROFILES[audio]) elements.audioMode.value = audio;
       if (quality === '720' || quality === '1080') elements.videoQuality.value = quality;
+      if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
+      if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
+      state.face = restoreBox(layout?.face, DEFAULT_FACE, .14, .10);
+      state.teleBox = restoreBox(layout?.teleBox, DEFAULT_TELE_BOX, .35, .24);
+      if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;
     } catch (_) {}
   }
 
@@ -703,6 +918,12 @@
   elements.mediaTab.addEventListener('click', () => setMode('media'));
   elements.faceTab.addEventListener('click', () => setMode('facecam'));
   elements.cameraBtn.addEventListener('click', startCamera);
+  elements.retryCameraBtn.addEventListener('click', startCamera);
+  elements.cameraSettingsBtn.addEventListener('click', () => {
+    state.resumeCamera = true;
+    if (window.AndroidBridge?.openAppSettings) window.AndroidBridge.openAppSettings();
+    else showStatus('Ouvre les réglages Android de l’application pour autoriser caméra et micro', true, 5000);
+  });
   elements.recBtn.addEventListener('click', startRecording);
   elements.stopBtn.addEventListener('click', stopRecording);
   elements.download.addEventListener('click', saveRecording);
@@ -718,19 +939,58 @@
     state.facingMode = state.facingMode === 'user' ? 'environment' : 'user';
     await startCamera();
   });
-  elements.mirrorBtn.addEventListener('click', () => { state.mirrored = !state.mirrored; updateMirror(); });
+  elements.mirrorBtn.addEventListener('click', () => {
+    state.mirrored = !state.mirrored;
+    updateMirror();
+    saveScript();
+  });
   elements.audioMode.addEventListener('change', async () => {
     saveScript();
     updateAudioLabel();
-    if (state.cameraStream) await startCamera();
+    if (hasLiveMicrophone()) {
+      state.micOnlyStream.getTracks().forEach((track) => track.stop());
+      state.micOnlyStream = null;
+      stopLiveMeter();
+      const microphone = await ensureMicrophone();
+      if (microphone) startLiveMeter(microphone);
+    }
   });
-  elements.videoQuality.addEventListener('change', saveScript);
+  elements.videoQuality.addEventListener('change', async () => {
+    saveScript();
+    if (hasLiveCamera()) await startCamera();
+  });
   elements.scriptInput.addEventListener('input', () => {
     updateTeleText(false);
     clearTimeout(elements.scriptInput._saveTimer);
     elements.scriptInput._saveTimer = setTimeout(saveScript, 350);
   });
-  elements.sizeRange.addEventListener('input', () => updateTeleText(false));
+  elements.speedRange.addEventListener('input', saveScript);
+  elements.sizeRange.addEventListener('input', () => {
+    updateTeleText(false);
+    saveScript();
+  });
+  elements.textUpBtn.addEventListener('click', () => {
+    state.teleBox.y = clamp(state.teleBox.y - .045, 0, 1 - state.teleBox.h);
+    layoutTeleprompter();
+    saveScript();
+  });
+  elements.textDownBtn.addEventListener('click', () => {
+    state.teleBox.y = clamp(state.teleBox.y + .045, 0, 1 - state.teleBox.h);
+    layoutTeleprompter();
+    saveScript();
+  });
+  elements.textSmallerBtn.addEventListener('click', () => applyTeleFont(Number(elements.sizeRange.value) - 3));
+  elements.textLargerBtn.addEventListener('click', () => applyTeleFont(Number(elements.sizeRange.value) + 3));
+  elements.resetLayoutBtn.addEventListener('click', () => {
+    state.face = { ...DEFAULT_FACE };
+    state.teleBox = { ...DEFAULT_TELE_BOX };
+    elements.sizeRange.value = '36';
+    layoutFace();
+    layoutTeleprompter();
+    updateTeleText(true);
+    saveScript();
+    showStatus('Positions réinitialisées');
+  });
 
   elements.mediaInput.addEventListener('change', (event) => {
     const file = event.target.files?.[0];
@@ -765,27 +1025,168 @@
     displayImportedMedia();
   });
 
-  elements.cameraVideo.addEventListener('pointerdown', (event) => {
-    if (state.mode !== 'facecam') return;
-    const rect = elements.stage.getBoundingClientRect();
-    state.faceDrag = true;
-    state.faceDx = (event.clientX - rect.left) / rect.width - state.face.x;
-    state.faceDy = (event.clientY - rect.top) / rect.height - state.face.y;
-    elements.cameraVideo.setPointerCapture(event.pointerId);
+  function startFaceGesture(kind, point) {
+    state.faceGesture = {
+      kind,
+      pointerId: point.id,
+      startX: point.x,
+      startY: point.y,
+      box: { ...state.face }
+    };
+  }
+
+  elements.faceFrame.addEventListener('pointerdown', (event) => {
+    if (state.mode !== 'facecam' || !hasLiveCamera() || document.body.classList.contains('recording')) return;
+    const point = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    state.facePointers.set(event.pointerId, point);
+    try { elements.faceFrame.setPointerCapture(event.pointerId); } catch (_) {}
+    if (state.facePointers.size === 1) {
+      startFaceGesture(event.target === elements.faceResizeHandle ? 'resize' : 'drag', point);
+    } else if (state.facePointers.size === 2) {
+      const points = [...state.facePointers.values()];
+      state.faceGesture = {
+        kind: 'pinch',
+        distance: pointerDistance(points[0], points[1]),
+        center: pointerCenter(points[0], points[1]),
+        box: { ...state.face }
+      };
+    }
+    event.stopPropagation();
     event.preventDefault();
   });
-  elements.cameraVideo.addEventListener('pointermove', (event) => {
-    if (!state.faceDrag) return;
-    const rect = elements.stage.getBoundingClientRect();
-    state.face.x = clamp((event.clientX - rect.left) / rect.width - state.faceDx, 0, 1 - state.face.w);
-    state.face.y = clamp((event.clientY - rect.top) / rect.height - state.faceDy, 0, 1 - state.face.h);
+
+  elements.faceFrame.addEventListener('pointermove', (event) => {
+    if (!state.facePointers.has(event.pointerId) || !state.faceGesture) return;
+    state.facePointers.set(event.pointerId, { id: event.pointerId, x: event.clientX, y: event.clientY });
+    const stageRect = elements.stage.getBoundingClientRect();
+    const gesture = state.faceGesture;
+    if (gesture.kind === 'pinch' && state.facePointers.size >= 2) {
+      const points = [...state.facePointers.values()].slice(0, 2);
+      const center = pointerCenter(points[0], points[1]);
+      const scale = pointerDistance(points[0], points[1]) / Math.max(1, gesture.distance);
+      const width = clamp(gesture.box.w * scale, .14, .78);
+      const height = clamp(gesture.box.h * scale, .10, .64);
+      const baseCenterX = gesture.box.x + gesture.box.w / 2;
+      const baseCenterY = gesture.box.y + gesture.box.h / 2;
+      const centerX = baseCenterX + (center.x - gesture.center.x) / stageRect.width;
+      const centerY = baseCenterY + (center.y - gesture.center.y) / stageRect.height;
+      state.face = {
+        x: clamp(centerX - width / 2, 0, 1 - width),
+        y: clamp(centerY - height / 2, 0, 1 - height),
+        w: width,
+        h: height
+      };
+    } else if (gesture.pointerId === event.pointerId && gesture.kind === 'resize') {
+      const dx = (event.clientX - gesture.startX) / stageRect.width;
+      const dy = (event.clientY - gesture.startY) / stageRect.height;
+      const scale = Math.max(
+        (gesture.box.w + dx) / gesture.box.w,
+        (gesture.box.h + dy) / gesture.box.h
+      );
+      state.face.w = clamp(gesture.box.w * scale, .14, 1 - gesture.box.x);
+      state.face.h = clamp(gesture.box.h * scale, .10, 1 - gesture.box.y);
+    } else if (gesture.pointerId === event.pointerId && gesture.kind === 'drag') {
+      state.face.x = clamp(gesture.box.x + (event.clientX - gesture.startX) / stageRect.width, 0, 1 - state.face.w);
+      state.face.y = clamp(gesture.box.y + (event.clientY - gesture.startY) / stageRect.height, 0, 1 - state.face.h);
+    }
     layoutFace();
+    event.stopPropagation();
     event.preventDefault();
   });
-  ['pointerup', 'pointercancel'].forEach((name) => elements.cameraVideo.addEventListener(name, () => { state.faceDrag = false; }));
+
+  function endFacePointer(event) {
+    if (!state.facePointers.has(event.pointerId)) return;
+    state.facePointers.delete(event.pointerId);
+    state.faceGesture = null;
+    if (state.facePointers.size === 1) startFaceGesture('drag', [...state.facePointers.values()][0]);
+    saveScript();
+    event.stopPropagation();
+  }
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((name) => elements.faceFrame.addEventListener(name, endFacePointer));
+
+  function startTeleGesture(kind, point) {
+    state.teleGesture = {
+      kind,
+      pointerId: point.id,
+      startX: point.x,
+      startY: point.y,
+      box: { ...state.teleBox },
+      fontSize: Number(elements.sizeRange.value)
+    };
+  }
+
+  elements.teleprompter.addEventListener('pointerdown', (event) => {
+    if (state.mode === 'media' || document.body.classList.contains('recording')) return;
+    stopTeleprompter(true);
+    const point = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    state.telePointers.set(event.pointerId, point);
+    try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
+    if (state.telePointers.size === 1) {
+      startTeleGesture(event.target === elements.teleResizeHandle ? 'resize' : 'drag', point);
+    } else if (state.telePointers.size === 2) {
+      const points = [...state.telePointers.values()];
+      state.teleGesture = {
+        kind: 'pinch',
+        distance: pointerDistance(points[0], points[1]),
+        center: pointerCenter(points[0], points[1]),
+        box: { ...state.teleBox },
+        fontSize: Number(elements.sizeRange.value)
+      };
+    }
+    event.stopPropagation();
+    event.preventDefault();
+  });
+
+  elements.teleprompter.addEventListener('pointermove', (event) => {
+    if (!state.telePointers.has(event.pointerId) || !state.teleGesture) return;
+    state.telePointers.set(event.pointerId, { id: event.pointerId, x: event.clientX, y: event.clientY });
+    const stageRect = elements.stage.getBoundingClientRect();
+    const gesture = state.teleGesture;
+    if (gesture.kind === 'pinch' && state.telePointers.size >= 2) {
+      const points = [...state.telePointers.values()].slice(0, 2);
+      const center = pointerCenter(points[0], points[1]);
+      const scale = pointerDistance(points[0], points[1]) / Math.max(1, gesture.distance);
+      const width = clamp(gesture.box.w * scale, .35, 1);
+      const height = clamp(gesture.box.h * scale, .24, 1);
+      const baseCenterX = gesture.box.x + gesture.box.w / 2;
+      const baseCenterY = gesture.box.y + gesture.box.h / 2;
+      const centerX = baseCenterX + (center.x - gesture.center.x) / stageRect.width;
+      const centerY = baseCenterY + (center.y - gesture.center.y) / stageRect.height;
+      state.teleBox = {
+        x: clamp(centerX - width / 2, 0, 1 - width),
+        y: clamp(centerY - height / 2, 0, 1 - height),
+        w: width,
+        h: height
+      };
+      elements.sizeRange.value = String(clamp(Math.round(gesture.fontSize * scale), 20, 70));
+      elements.teleText.style.fontSize = `${elements.sizeRange.value}px`;
+    } else if (gesture.pointerId === event.pointerId && gesture.kind === 'resize') {
+      const dx = (event.clientX - gesture.startX) / stageRect.width;
+      const dy = (event.clientY - gesture.startY) / stageRect.height;
+      state.teleBox.w = clamp(gesture.box.w + dx, .35, 1 - gesture.box.x);
+      state.teleBox.h = clamp(gesture.box.h + dy, .24, 1 - gesture.box.y);
+    } else if (gesture.pointerId === event.pointerId && gesture.kind === 'drag') {
+      state.teleBox.x = clamp(gesture.box.x + (event.clientX - gesture.startX) / stageRect.width, 0, 1 - state.teleBox.w);
+      state.teleBox.y = clamp(gesture.box.y + (event.clientY - gesture.startY) / stageRect.height, 0, 1 - state.teleBox.h);
+    }
+    layoutTeleprompter();
+    event.stopPropagation();
+    event.preventDefault();
+  });
+
+  function endTelePointer(event) {
+    if (!state.telePointers.has(event.pointerId)) return;
+    state.telePointers.delete(event.pointerId);
+    state.teleGesture = null;
+    if (state.telePointers.size === 1) startTeleGesture('drag', [...state.telePointers.values()][0]);
+    updateTeleText(true);
+    saveScript();
+    event.stopPropagation();
+  }
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((name) => elements.teleprompter.addEventListener(name, endTelePointer));
 
   elements.stage.addEventListener('pointerdown', (event) => {
-    if (event.target === elements.cameraVideo || state.mode === 'live' || !state.mediaType) return;
+    if (elements.faceFrame.contains(event.target) || elements.teleprompter.contains(event.target) || state.mode === 'live' || !state.mediaType) return;
     const now = Date.now();
     if (now - state.lastTap < 280 && state.viewPointers.size === 0) {
       resetMediaView();
@@ -807,7 +1208,7 @@
   });
 
   elements.stage.addEventListener('pointermove', (event) => {
-    if (!state.viewPointers.has(event.pointerId) || event.target === elements.cameraVideo) return;
+    if (!state.viewPointers.has(event.pointerId) || elements.faceFrame.contains(event.target) || elements.teleprompter.contains(event.target)) return;
     state.viewPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
     if (state.viewPointers.size >= 2 && state.pinchStart) {
       const points = [...state.viewPointers.values()].slice(0, 2);
@@ -848,7 +1249,15 @@
     stopCameraTracks();
   });
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && state.recorder?.state === 'recording') requestWakeLock();
+    if (document.hidden && (!state.recorder || state.recorder.state === 'inactive')) {
+      state.resumeCamera = state.resumeCamera || hasLiveCamera();
+      stopCameraTracks();
+    } else if (!document.hidden && state.recorder?.state === 'recording') {
+      requestWakeLock();
+    } else if (!document.hidden && state.resumeCamera) {
+      state.resumeCamera = false;
+      startCamera();
+    }
   });
 
   restorePreferences();
