@@ -47,9 +47,9 @@
   };
 
   const AUDIO_PROFILES = {
-    studio: { label: 'Voix studio', echoCancellation: true, noiseSuppression: true, autoGainControl: true, channels: 1, highpass: 75, presence: 2.8, threshold: -24, ratio: 3.2, gain: 1.08 },
-    natural: { label: 'Voix naturelle', echoCancellation: true, noiseSuppression: true, autoGainControl: false, channels: 1, highpass: 55, presence: 1.2, threshold: -20, ratio: 2.2, gain: 1.02 },
-    music: { label: 'Musique / chant', echoCancellation: false, noiseSuppression: false, autoGainControl: false, channels: 2, highpass: 30, presence: .5, threshold: -14, ratio: 1.6, gain: 1 }
+    studio: { label: 'Voix studio HD', echoCancellation: true, noiseSuppression: true, autoGainControl: false, channels: 1, highpass: 70, presence: 1.4, threshold: -18, ratio: 2.4, gain: .8 },
+    natural: { label: 'Voix naturelle HD', echoCancellation: true, noiseSuppression: true, autoGainControl: false, channels: 1, highpass: 50, presence: .7, threshold: -16, ratio: 1.8, gain: .88 },
+    music: { label: 'Musique / chant HD', echoCancellation: false, noiseSuppression: false, autoGainControl: false, channels: 2, highpass: 28, presence: .3, threshold: -12, ratio: 1.35, gain: .9 }
   };
 
   function showStatus(message, isError = false, timeout = 2800) {
@@ -107,7 +107,7 @@
       return;
     }
     if (state.nativeMicrophone?.active) {
-      elements.audioLabel.textContent = `${profile.label} · micro Android natif · 48 kHz · mono`;
+      elements.audioLabel.textContent = `${profile.label} · micro téléphone HD · 48 kHz · mono`;
       elements.activateMicBtn.textContent = 'Micro actif · tester ma voix';
       return;
     }
@@ -373,6 +373,10 @@
     const native = state.nativeMicrophone;
     state.nativeMicrophone = null;
     if (native) native.active = false;
+    if (native?.worklet) {
+      try { native.worklet.port.postMessage({ type: 'stop' }); } catch (_) {}
+      try { native.worklet.disconnect(); } catch (_) {}
+    }
     try { window.AndroidBridge?.stopNativeMicrophone?.(); } catch (_) {}
     if (native?.context && native.context.state !== 'closed') {
       try { await native.context.close(); } catch (_) {}
@@ -596,10 +600,28 @@
     const context = createContext();
     if (!context?.createMediaStreamDestination) return null;
     const destination = context.createMediaStreamDestination();
+    let worklet = null;
+    if (context.audioWorklet && window.AudioWorkletNode) {
+      try {
+        await Promise.race([
+          context.audioWorklet.addModule('./native-audio-worklet.js'),
+          delay(1400).then(() => { throw new Error('AudioWorkletTimeout'); })
+        ]);
+        worklet = new AudioWorkletNode(context, 'grok-native-pcm', {
+          numberOfInputs: 0,
+          numberOfOutputs: 1,
+          outputChannelCount: [1]
+        });
+        worklet.connect(destination);
+      } catch (error) {
+        console.warn('Tampon AudioWorklet indisponible, repli compatible', error);
+      }
+    }
     const native = {
       active: true,
       context,
       destination,
+      worklet,
       sampleRate: 48000,
       nextTime: 0
     };
@@ -607,7 +629,7 @@
 
     try {
       context.resume().catch(() => {});
-      const sampleRate = Number(bridge.startNativeMicrophone());
+      const sampleRate = Number(bridge.startNativeMicrophone(elements.audioMode.value));
       if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error('NativeMicrophoneUnavailable');
       native.sampleRate = sampleRate;
       if (!liveTracks(destination.stream, 'audio').length) throw new Error('NativeMicrophoneTrackUnavailable');
@@ -634,21 +656,42 @@
         const binary = atob(base64Pcm);
         const sampleCount = Math.floor(binary.length / 2);
         if (!sampleCount) return;
-        const buffer = context.createBuffer(1, sampleCount, Number(sampleRate) || native.sampleRate || 48000);
-        const channel = buffer.getChannelData(0);
+        const inputRate = Number(sampleRate) || native.sampleRate || 48000;
+        let samples = new Float32Array(sampleCount);
         for (let index = 0; index < sampleCount; index += 1) {
           const low = binary.charCodeAt(index * 2);
           const high = binary.charCodeAt(index * 2 + 1);
           const value = (high << 8) | low;
-          channel[index] = (value & 0x8000 ? value - 0x10000 : value) / 32768;
+          samples[index] = (value & 0x8000 ? value - 0x10000 : value) / 32768;
         }
 
+        if (inputRate !== context.sampleRate) {
+          const outputLength = Math.max(1, Math.round(samples.length * context.sampleRate / inputRate));
+          const resampled = new Float32Array(outputLength);
+          const ratio = inputRate / context.sampleRate;
+          for (let index = 0; index < outputLength; index += 1) {
+            const position = index * ratio;
+            const left = Math.min(samples.length - 1, Math.floor(position));
+            const right = Math.min(samples.length - 1, left + 1);
+            const mix = position - left;
+            resampled[index] = samples[left] + (samples[right] - samples[left]) * mix;
+          }
+          samples = resampled;
+        }
+
+        if (native.worklet) {
+          native.worklet.port.postMessage({ type: 'pcm', samples }, [samples.buffer]);
+          return;
+        }
+
+        const buffer = context.createBuffer(1, samples.length, context.sampleRate);
+        buffer.copyToChannel(samples, 0);
         const source = context.createBufferSource();
         source.buffer = buffer;
         source.connect(native.destination);
         const now = context.currentTime;
         if (!native.nextTime || native.nextTime < now - .08 || native.nextTime > now + .45) {
-          native.nextTime = now + .06;
+          native.nextTime = now + .18;
         }
         source.start(native.nextTime);
         native.nextTime += buffer.duration;
@@ -734,18 +777,22 @@
     presence.frequency.value = 3000;
     presence.Q.value = .8;
     presence.gain.value = profile.presence;
+    const lowpass = context.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = elements.audioMode.value === 'music' ? 19500 : 16000;
+    lowpass.Q.value = .55;
     const compressor = context.createDynamicsCompressor();
     compressor.threshold.value = profile.threshold;
-    compressor.knee.value = 18;
+    compressor.knee.value = 12;
     compressor.ratio.value = profile.ratio;
-    compressor.attack.value = .005;
-    compressor.release.value = .18;
+    compressor.attack.value = .008;
+    compressor.release.value = .22;
     const gain = context.createGain();
     gain.gain.value = profile.gain * microphoneVolume();
     const analyser = context.createAnalyser();
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = .78;
-    source.connect(highpass).connect(presence).connect(compressor).connect(gain).connect(analyser).connect(master);
+    source.connect(highpass).connect(presence).connect(lowpass).connect(compressor).connect(gain).connect(analyser).connect(master);
     return analyser;
   }
 
@@ -794,12 +841,14 @@
     ]);
     const destination = context.createMediaStreamDestination();
     const limiter = context.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 2;
-    limiter.ratio.value = 12;
-    limiter.attack.value = .002;
-    limiter.release.value = .08;
-    limiter.connect(destination);
+    limiter.threshold.value = -4;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = .001;
+    limiter.release.value = .12;
+    const safetyGain = context.createGain();
+    safetyGain.gain.value = .74;
+    limiter.connect(safetyGain).connect(destination);
     let analyser = null;
     if (micStream) analyser = connectVoicePipeline(context, micStream, limiter);
     if (mediaAudio) {
@@ -1277,7 +1326,7 @@
     if (microphone) {
       startLiveMeter(microphone);
       showStatus(state.nativeMicrophone?.active
-        ? 'Micro Android natif actif à 48 kHz · parle et vérifie la barre'
+        ? 'Micro téléphone HD actif à 48 kHz · parle et vérifie la barre'
         : 'Micro actif · parle et vérifie la barre de niveau', false, 4500);
     }
     saveScript();

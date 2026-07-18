@@ -11,6 +11,7 @@ import android.graphics.Color;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
+import android.media.audiofx.NoiseSuppressor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -270,13 +271,14 @@ public final class MainActivity extends Activity {
 
     public final class AndroidBridge {
         private static final int NATIVE_MIC_SAMPLE_RATE = 48000;
-        private static final int NATIVE_MIC_CHUNK_BYTES = 8192;
+        private static final int NATIVE_MIC_CHUNK_BYTES = 4096;
         private final ContentResolver resolver;
         private final Map<String, SaveSession> sessions = new ConcurrentHashMap<>();
         private final Object nativeMicrophoneLock = new Object();
         private volatile boolean nativeMicrophoneRunning;
         private AudioRecord nativeAudioRecord;
         private Thread nativeAudioThread;
+        private NoiseSuppressor nativeNoiseSuppressor;
 
         AndroidBridge(ContentResolver resolver) {
             this.resolver = resolver;
@@ -299,10 +301,10 @@ public final class MainActivity extends Activity {
          * Secours natif pour les WebView/OEM qui refusent getUserMedia(audio)
          * alors que RECORD_AUDIO est bien accordée. Le PCM mono 16 bits est
          * envoyé au graphe WebAudio de l'application par blocs courts.
-        */
+         */
         @SuppressLint("MissingPermission")
         @JavascriptInterface
-        public int startNativeMicrophone() {
+        public int startNativeMicrophone(String profileName) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                 return 0;
             }
@@ -318,22 +320,48 @@ public final class MainActivity extends Activity {
                 if (minimum <= 0) return 0;
                 int bufferSize = Math.max(minimum * 4, NATIVE_MIC_CHUNK_BYTES * 4);
 
-                AudioRecord recorder = createAudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, bufferSize);
-                if (recorder == null) recorder = createAudioRecord(MediaRecorder.AudioSource.MIC, bufferSize);
+                boolean musicProfile = "music".equals(profileName);
+                int[] sources = musicProfile
+                        ? new int[] {
+                                MediaRecorder.AudioSource.UNPROCESSED,
+                                MediaRecorder.AudioSource.CAMCORDER,
+                                MediaRecorder.AudioSource.MIC
+                        }
+                        : new int[] {
+                                MediaRecorder.AudioSource.CAMCORDER,
+                                MediaRecorder.AudioSource.VOICE_RECOGNITION,
+                                MediaRecorder.AudioSource.MIC
+                        };
+                AudioRecord recorder = null;
+                for (int source : sources) {
+                    recorder = createAudioRecord(source, bufferSize);
+                    if (recorder != null) break;
+                }
                 if (recorder == null) return 0;
+
+                NoiseSuppressor noiseSuppressor = null;
+                if (!musicProfile && NoiseSuppressor.isAvailable()) {
+                    try {
+                        noiseSuppressor = NoiseSuppressor.create(recorder.getAudioSessionId());
+                        if (noiseSuppressor != null) noiseSuppressor.setEnabled(true);
+                    } catch (Exception ignored) {}
+                }
 
                 try {
                     recorder.startRecording();
                     if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                        if (noiseSuppressor != null) noiseSuppressor.release();
                         recorder.release();
                         return 0;
                     }
                 } catch (Exception error) {
+                    if (noiseSuppressor != null) noiseSuppressor.release();
                     try { recorder.release(); } catch (Exception ignored) {}
                     return 0;
                 }
 
                 nativeAudioRecord = recorder;
+                nativeNoiseSuppressor = noiseSuppressor;
                 nativeMicrophoneRunning = true;
                 AudioRecord activeRecorder = recorder;
                 nativeAudioThread = new Thread(
@@ -389,15 +417,21 @@ public final class MainActivity extends Activity {
                 }
             } finally {
                 boolean ownsRecorder = false;
+                NoiseSuppressor noiseSuppressor = null;
                 synchronized (nativeMicrophoneLock) {
                     if (nativeAudioRecord == recorder) {
                         nativeMicrophoneRunning = false;
                         nativeAudioRecord = null;
                         nativeAudioThread = null;
+                        noiseSuppressor = nativeNoiseSuppressor;
+                        nativeNoiseSuppressor = null;
                         ownsRecorder = true;
                     }
                 }
                 if (ownsRecorder) {
+                    if (noiseSuppressor != null) {
+                        try { noiseSuppressor.release(); } catch (Exception ignored) {}
+                    }
                     try { recorder.stop(); } catch (Exception ignored) {}
                     try { recorder.release(); } catch (Exception ignored) {}
                 }
@@ -435,12 +469,15 @@ public final class MainActivity extends Activity {
         public void stopNativeMicrophone() {
             AudioRecord recorder;
             Thread thread;
+            NoiseSuppressor noiseSuppressor;
             synchronized (nativeMicrophoneLock) {
                 nativeMicrophoneRunning = false;
                 recorder = nativeAudioRecord;
                 thread = nativeAudioThread;
                 nativeAudioRecord = null;
                 nativeAudioThread = null;
+                noiseSuppressor = nativeNoiseSuppressor;
+                nativeNoiseSuppressor = null;
             }
             if (recorder != null) {
                 try { recorder.stop(); } catch (Exception ignored) {}
@@ -449,6 +486,9 @@ public final class MainActivity extends Activity {
                 try { thread.join(500); } catch (InterruptedException error) {
                     Thread.currentThread().interrupt();
                 }
+            }
+            if (noiseSuppressor != null) {
+                try { noiseSuppressor.release(); } catch (Exception ignored) {}
             }
             if (recorder != null) {
                 try { recorder.release(); } catch (Exception ignored) {}
