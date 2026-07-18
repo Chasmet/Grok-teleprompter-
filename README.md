@@ -50,7 +50,7 @@ L’APK contient l’application web dans ses propres ressources et fonctionne s
 - des demandes caméra et micro séparées avec plusieurs niveaux de repli ;
 - un secours microphone Android natif mono 48 kHz si le moteur WebView refuse l’entrée audio ;
 - un tampon audio exécuté sur le thread sonore pour supprimer les clics et coupures entre blocs ;
-- la source caméscope du téléphone et la réduction de bruit Android pour une voix plus propre ;
+- la source caméscope du téléphone sans effet Android découpant la voix par trames ;
 - une aide persistante et un accès direct aux autorisations Android en cas d’échec ;
 - l’enregistrement par blocs des grosses vidéos, sans charger tout le fichier en mémoire native ;
 - la sauvegarde directe dans `Films/Grok Teleprompteur` via MediaStore.
@@ -66,7 +66,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.5.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.6.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 

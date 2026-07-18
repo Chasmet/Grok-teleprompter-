@@ -1,4 +1,4 @@
-const CACHE_NAME = 'grok-teleprompter-studio-v11';
+const CACHE_NAME = 'grok-teleprompter-studio-v12';
 const APP_SHELL = ['./', './index.html', './style.css', './script.js', './native-audio-worklet.js', './manifest.json', './icon-512.png'];
 
 self.addEventListener('install', (event) => {

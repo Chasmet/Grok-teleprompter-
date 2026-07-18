@@ -1,4 +1,4 @@
-# Audit complet — Grok Téléprompteur Studio 2.5.0
+# Audit complet — Grok Téléprompteur Studio 2.6.0
 
 Date : 18 juillet 2026
 
@@ -8,7 +8,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 
 ## Défauts constatés et corrections
 
-| Zone | Défaut constaté | Gravité | Correction 2.5.0 |
+| Zone | Défaut constaté | Gravité | Correction 2.6.0 |
 |---|---|---:|---|
 | Caméra Android | Caméra et micro demandés dans un même appel, source fréquente de `NotReadableError` sur certains WebView | Critique | Ouverture vidéo seule, puis ouverture du micro séparée |
 | Caméra Android | Une seule stratégie de contraintes vidéo | Élevée | Replis progressifs 1080/720, contraintes simples et essais par périphérique |
@@ -30,13 +30,14 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Audio | Son importé trop présent par défaut | Élevée | Son de la vidéo coupé par défaut et micro réglé à 130 % |
 | Audio Android | Permissions accordées mais `NotReadableError` persistant dans certains WebView/OEM | Critique | Repli automatique vers `AudioRecord` Android natif, mono PCM 16 bits à 48 kHz, sans couper la caméra |
 | Audio Android | Raccords secs et clics entre les blocs PCM transmis par le pont natif | Critique | Tampon continu `AudioWorklet` avec précharge, lissages d’entrée/sortie et protection contre les retards |
-| Audio Android | Voix trop poussée, crêtes à 0 dB et traitement agressif dans l’enregistrement réel fourni | Critique | Source caméscope du téléphone, réduction de bruit Android, compression plus naturelle et marge de sécurité anti-saturation |
+| Audio Android | Voix trop poussée, crêtes à 0 dB et traitement agressif dans l’enregistrement réel fourni | Critique | Source caméscope du téléphone, compression plus naturelle et marge de sécurité anti-saturation |
+| Audio Android | Grésillement régulier aux frontières des trames de 10 ms | Critique | Retrait du `NoiseSuppressor` Android incompatible avec le traitement du constructeur, tout en conservant la source caméscope et la chaîne anti-saturation |
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
 | Cycle Android | Absence d’accès direct à la fiche de l’application | Moyenne | Pont natif vers les réglages de l’application |
 
 ## Qualité audio
 
-Le profil « Voix studio HD » demande une capture 48 kHz mono. Si WebView refuse cette capture malgré l’autorisation Android, l’application ouvre directement `AudioRecord` avec la source caméscope du téléphone, active la réduction de bruit matérielle disponible puis transmet le PCM 16 bits à un tampon audio continu. Le traitement ajoute un coupe-bas léger, une présence vocale modérée, une compression douce, un limiteur et une marge de sortie anti-saturation, avec un débit cible de 256 kb/s. Le profil « Musique / chant HD » préfère au contraire la source non traitée lorsqu’elle est disponible.
+Le profil « Voix studio HD » demande une capture 48 kHz mono. Si WebView refuse cette capture malgré l’autorisation Android, l’application ouvre directement `AudioRecord` avec la source caméscope du téléphone puis transmet le PCM 16 bits à un tampon audio continu. Aucun effet `NoiseSuppressor` supplémentaire n’est attaché au flux natif : l’échantillon réel a montré que son traitement par trames de 10 ms provoquait le grésillement sur l’appareil testé. Le traitement WebAudio conserve un coupe-bas léger, une présence vocale modérée, une compression douce, un limiteur et une marge de sortie anti-saturation, avec un débit cible de 256 kb/s.
 
 La qualité finale reste limitée par le microphone, les traitements réellement acceptés par le constructeur Android et le codec fourni par le WebView.
 

@@ -32,7 +32,7 @@ test('Android provides a clean native 48 kHz microphone when WebView capture fai
   assert.match(android, /startNativeMicrophone\(String profileName\)/);
   assert.match(android, /NATIVE_MIC_SAMPLE_RATE = 48000/);
   assert.match(android, /MediaRecorder\.AudioSource\.CAMCORDER/);
-  assert.match(android, /NoiseSuppressor\.create/);
+  assert.doesNotMatch(android, /NoiseSuppressor/);
   assert.match(script, /window\.GrokNativeAudio/);
   assert.match(script, /startNativeMicrophoneFallback/);
   assert.match(script, /new AudioWorkletNode\(context, 'grok-native-pcm'/);
