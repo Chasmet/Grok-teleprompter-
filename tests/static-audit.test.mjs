@@ -5,6 +5,7 @@ import test from 'node:test';
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const script = fs.readFileSync(new URL('../script.js', import.meta.url), 'utf8');
 const manifest = fs.readFileSync(new URL('../app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
+const android = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokteleprompter/MainActivity.java', import.meta.url), 'utf8');
 
 test('every interface id is unique', () => {
   const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
@@ -20,6 +21,15 @@ test('camera and microphone are requested separately', () => {
 test('Android declares camera and microphone permissions', () => {
   assert.match(manifest, /android\.permission\.CAMERA/);
   assert.match(manifest, /android\.permission\.RECORD_AUDIO/);
+});
+
+test('Android provides a native 48 kHz microphone when WebView capture fails', () => {
+  assert.match(android, /new AudioRecord\.Builder\(\)/);
+  assert.match(android, /startNativeMicrophone\(\)/);
+  assert.match(android, /NATIVE_MIC_SAMPLE_RATE = 48000/);
+  assert.match(android, /MediaRecorder\.AudioSource\.VOICE_RECOGNITION/);
+  assert.match(script, /window\.GrokNativeAudio/);
+  assert.match(script, /startNativeMicrophoneFallback/);
 });
 
 test('the tactile and short-text safeguards stay wired', () => {

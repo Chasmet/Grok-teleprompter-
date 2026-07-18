@@ -35,6 +35,7 @@
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
+    nativeMicrophone: null,
     recordingStarting: false,
     facingMode: 'user', mirrored: true,
     face: { ...DEFAULT_FACE }, facePointers: new Map(), faceGesture: null,
@@ -103,6 +104,11 @@
     if (!track) {
       elements.audioLabel.textContent = `${profile.label} · aucun micro actif`;
       elements.activateMicBtn.textContent = state.microphoneStarting ? 'Ouverture du micro…' : 'Activer / tester le micro';
+      return;
+    }
+    if (state.nativeMicrophone?.active) {
+      elements.audioLabel.textContent = `${profile.label} · micro Android natif · 48 kHz · mono`;
+      elements.activateMicBtn.textContent = 'Micro actif · tester ma voix';
       return;
     }
     const settings = track.getSettings ? track.getSettings() : {};
@@ -359,10 +365,23 @@
     updateTabs();
   }
 
+  async function stopMicrophoneCapture() {
+    const stream = state.micOnlyStream;
+    state.micOnlyStream = null;
+    stream?.getTracks().forEach((track) => track.stop());
+
+    const native = state.nativeMicrophone;
+    state.nativeMicrophone = null;
+    if (native) native.active = false;
+    try { window.AndroidBridge?.stopNativeMicrophone?.(); } catch (_) {}
+    if (native?.context && native.context.state !== 'closed') {
+      try { await native.context.close(); } catch (_) {}
+    }
+  }
+
   async function stopCameraTracks() {
     await stopCameraVideo();
-    state.micOnlyStream?.getTracks().forEach((track) => track.stop());
-    state.micOnlyStream = null;
+    await stopMicrophoneCapture();
     stopLiveMeter();
     updateMixerUi();
   }
@@ -567,27 +586,106 @@
     }
   }
 
+  async function startNativeMicrophoneFallback() {
+    const bridge = window.AndroidBridge;
+    if (typeof bridge?.startNativeMicrophone !== 'function') return null;
+
+    // Laisse à WebRTC le temps de libérer sa tentative audio avant de passer
+    // à AudioRecord. Cela évite le faux « micro occupé » sur certains OEM.
+    await delay(280);
+    const context = createContext();
+    if (!context?.createMediaStreamDestination) return null;
+    const destination = context.createMediaStreamDestination();
+    const native = {
+      active: true,
+      context,
+      destination,
+      sampleRate: 48000,
+      nextTime: 0
+    };
+    state.nativeMicrophone = native;
+
+    try {
+      context.resume().catch(() => {});
+      const sampleRate = Number(bridge.startNativeMicrophone());
+      if (!Number.isFinite(sampleRate) || sampleRate <= 0) throw new Error('NativeMicrophoneUnavailable');
+      native.sampleRate = sampleRate;
+      if (!liveTracks(destination.stream, 'audio').length) throw new Error('NativeMicrophoneTrackUnavailable');
+      return destination.stream;
+    } catch (error) {
+      native.active = false;
+      state.nativeMicrophone = null;
+      try { bridge.stopNativeMicrophone?.(); } catch (_) {}
+      try { await context.close(); } catch (_) {}
+      console.error('Échec du secours micro Android natif', error);
+      return null;
+    }
+  }
+
+  window.GrokNativeAudio = {
+    push(base64Pcm, sampleRate = 48000) {
+      const native = state.nativeMicrophone;
+      if (!native?.active || !base64Pcm) return;
+      const context = native.context;
+      if (!context || context.state === 'closed') return;
+      if (context.state === 'suspended') context.resume().catch(() => {});
+
+      try {
+        const binary = atob(base64Pcm);
+        const sampleCount = Math.floor(binary.length / 2);
+        if (!sampleCount) return;
+        const buffer = context.createBuffer(1, sampleCount, Number(sampleRate) || native.sampleRate || 48000);
+        const channel = buffer.getChannelData(0);
+        for (let index = 0; index < sampleCount; index += 1) {
+          const low = binary.charCodeAt(index * 2);
+          const high = binary.charCodeAt(index * 2 + 1);
+          const value = (high << 8) | low;
+          channel[index] = (value & 0x8000 ? value - 0x10000 : value) / 32768;
+        }
+
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(native.destination);
+        const now = context.currentTime;
+        if (!native.nextTime || native.nextTime < now - .08 || native.nextTime > now + .45) {
+          native.nextTime = now + .06;
+        }
+        source.start(native.nextTime);
+        native.nextTime += buffer.duration;
+        source.onended = () => { try { source.disconnect(); } catch (_) {} };
+      } catch (error) {
+        console.error('Bloc PCM natif invalide', error);
+      }
+    },
+    error(message) {
+      if (!state.nativeMicrophone?.active) return;
+      const failure = new DOMException(message || 'Le micro natif s’est arrêté', 'NotReadableError');
+      stopMicrophoneCapture().finally(() => showMicrophoneHelp(failure));
+    }
+  };
+
   async function openMicrophone() {
     state.microphoneStarting = true;
     updateMixerUi();
-    state.micOnlyStream?.getTracks().forEach((track) => track.stop());
-    state.micOnlyStream = null;
+    await stopMicrophoneCapture();
     let microphone = null;
+    let lastError = null;
     try {
       microphone = await openAudioOnly();
     } catch (error) {
-      if (hasLiveCamera() && error.name !== 'NotAllowedError' && error.name !== 'SecurityError') {
+      lastError = error;
+      microphone = await startNativeMicrophoneFallback();
+      if (!microphone && hasLiveCamera() && error.name !== 'NotAllowedError' && error.name !== 'SecurityError') {
         try { microphone = await recoverCombinedCameraAndMicrophone(); }
-        catch (combinedError) { error = combinedError; }
+        catch (combinedError) { lastError = combinedError; }
       }
-      if (!microphone) {
-        showMicrophoneHelp(error);
-        showStatus('Micro indisponible · la vidéo pourra quand même être enregistrée', true, 5200);
-        return null;
-      }
-    } finally {
+    }
+    if (!microphone) {
       state.microphoneStarting = false;
+      showMicrophoneHelp(lastError || new DOMException('Microphone indisponible', 'NotReadableError'));
+      showStatus('Micro indisponible · la vidéo pourra quand même être enregistrée', true, 5200);
       updateMixerUi();
+      return null;
     }
     state.micOnlyStream = microphone;
     const track = microphone.getAudioTracks()[0];
@@ -595,11 +693,14 @@
       track.enabled = true;
       track.contentHint = elements.audioMode.value === 'music' ? 'music' : 'speech';
       track.addEventListener('ended', () => {
-        if (wantsMicrophone()) showMicrophoneHelp(new DOMException('La piste micro s’est arrêtée', 'NotReadableError'));
+        if (wantsMicrophone() && state.micOnlyStream === microphone) {
+          showMicrophoneHelp(new DOMException('La piste micro s’est arrêtée', 'NotReadableError'));
+        }
         updateMixerUi();
       });
     }
     state.micLastError = null;
+    state.microphoneStarting = false;
     elements.microphoneHelp.classList.add('hide');
     updateMixerUi();
     return microphone;
@@ -687,7 +788,10 @@
         microphoneUnavailable
       };
     }
-    await context.resume();
+    await Promise.race([
+      context.resume().catch(() => {}),
+      delay(400)
+    ]);
     const destination = context.createMediaStreamDestination();
     const limiter = context.createDynamicsCompressor();
     limiter.threshold.value = -3;
@@ -923,6 +1027,8 @@
     elements.download.style.display = 'none';
     if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
     state.downloadUrl = '';
+
+    state.nativeMicrophone?.context?.resume().catch(() => {});
 
     if (state.mediaType === 'video' && state.mode !== 'live') await elements.mediaVideo.play().catch(() => {});
     stopLiveMeter();
@@ -1170,7 +1276,9 @@
     const microphone = await ensureMicrophone();
     if (microphone) {
       startLiveMeter(microphone);
-      showStatus('Micro actif · parle et vérifie la barre de niveau', false, 4500);
+      showStatus(state.nativeMicrophone?.active
+        ? 'Micro Android natif actif à 48 kHz · parle et vérifie la barre'
+        : 'Micro actif · parle et vérifie la barre de niveau', false, 4500);
     }
     saveScript();
   }
@@ -1202,8 +1310,7 @@
     saveScript();
     updateAudioLabel();
     if (hasLiveMicrophone()) {
-      state.micOnlyStream.getTracks().forEach((track) => track.stop());
-      state.micOnlyStream = null;
+      await stopMicrophoneCapture();
       stopLiveMeter();
       const microphone = await ensureMicrophone();
       if (microphone) startLiveMeter(microphone);
@@ -1213,8 +1320,7 @@
     if (wantsMicrophone()) {
       await activateMicrophone();
     } else {
-      state.micOnlyStream?.getTracks().forEach((track) => track.stop());
-      state.micOnlyStream = null;
+      await stopMicrophoneCapture();
       state.micLastError = null;
       elements.microphoneHelp.classList.add('hide');
       stopLiveMeter();

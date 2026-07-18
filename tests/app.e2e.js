@@ -127,3 +127,33 @@ test('recording still starts when an enabled microphone is unavailable', async (
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
 });
+
+test('the Android native microphone takes over when WebView audio is unreadable', async ({ page }) => {
+  await page.evaluate(() => {
+    window.AndroidBridge = {
+      startNativeMicrophone: () => 48000,
+      stopNativeMicrophone: () => {},
+      openAppSettings: () => {}
+    };
+    const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getUserMedia = (constraints) => {
+      if (constraints?.audio && !constraints?.video) {
+        return Promise.reject(new DOMException('WebView ne peut pas lire le micro', 'NotReadableError'));
+      }
+      return original(constraints);
+    };
+  });
+
+  await page.locator('#cameraBtn').click();
+  await expect(page.locator('#cameraBtn')).toHaveText('Caméra activée', { timeout: 15_000 });
+  await expect(page.locator('#audioLabel')).toContainText('micro Android natif');
+  await expect(page.locator('#audioLabel')).toContainText('48 kHz');
+  await expect(page.locator('#microphoneHelp')).toBeHidden();
+
+  await page.locator('#recBtn').click();
+  await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  await expect(page.locator('#recordQuality')).toContainText('micro');
+  await page.waitForTimeout(500);
+  await page.locator('#stopBtn').click();
+  await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
+});

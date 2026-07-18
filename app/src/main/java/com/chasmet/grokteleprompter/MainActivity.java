@@ -8,6 +8,9 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -231,6 +234,7 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onPause() {
+        if (androidBridge != null) androidBridge.stopNativeMicrophone();
         if (webView != null) webView.onPause();
         super.onPause();
     }
@@ -265,8 +269,14 @@ public final class MainActivity extends Activity {
     }
 
     public final class AndroidBridge {
+        private static final int NATIVE_MIC_SAMPLE_RATE = 48000;
+        private static final int NATIVE_MIC_CHUNK_BYTES = 8192;
         private final ContentResolver resolver;
         private final Map<String, SaveSession> sessions = new ConcurrentHashMap<>();
+        private final Object nativeMicrophoneLock = new Object();
+        private volatile boolean nativeMicrophoneRunning;
+        private AudioRecord nativeAudioRecord;
+        private Thread nativeAudioThread;
 
         AndroidBridge(ContentResolver resolver) {
             this.resolver = resolver;
@@ -283,6 +293,163 @@ public final class MainActivity extends Activity {
                     toast("Impossible d’ouvrir les réglages Android");
                 }
             });
+        }
+
+        /**
+         * Secours natif pour les WebView/OEM qui refusent getUserMedia(audio)
+         * alors que RECORD_AUDIO est bien accordée. Le PCM mono 16 bits est
+         * envoyé au graphe WebAudio de l'application par blocs courts.
+        */
+        @SuppressLint("MissingPermission")
+        @JavascriptInterface
+        public int startNativeMicrophone() {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                return 0;
+            }
+
+            synchronized (nativeMicrophoneLock) {
+                if (nativeMicrophoneRunning && nativeAudioRecord != null) return NATIVE_MIC_SAMPLE_RATE;
+
+                int minimum = AudioRecord.getMinBufferSize(
+                        NATIVE_MIC_SAMPLE_RATE,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT
+                );
+                if (minimum <= 0) return 0;
+                int bufferSize = Math.max(minimum * 4, NATIVE_MIC_CHUNK_BYTES * 4);
+
+                AudioRecord recorder = createAudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, bufferSize);
+                if (recorder == null) recorder = createAudioRecord(MediaRecorder.AudioSource.MIC, bufferSize);
+                if (recorder == null) return 0;
+
+                try {
+                    recorder.startRecording();
+                    if (recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                        recorder.release();
+                        return 0;
+                    }
+                } catch (Exception error) {
+                    try { recorder.release(); } catch (Exception ignored) {}
+                    return 0;
+                }
+
+                nativeAudioRecord = recorder;
+                nativeMicrophoneRunning = true;
+                AudioRecord activeRecorder = recorder;
+                nativeAudioThread = new Thread(
+                        () -> pumpNativeMicrophone(activeRecorder),
+                        "GrokNativeMicrophone"
+                );
+                nativeAudioThread.start();
+                return NATIVE_MIC_SAMPLE_RATE;
+            }
+        }
+
+        private AudioRecord createAudioRecord(int source, int bufferSize) {
+            try {
+                AudioRecord recorder = new AudioRecord.Builder()
+                        .setAudioSource(source)
+                        .setAudioFormat(new AudioFormat.Builder()
+                                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                .setSampleRate(NATIVE_MIC_SAMPLE_RATE)
+                                .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                                .build())
+                        .setBufferSizeInBytes(bufferSize)
+                        .build();
+                if (recorder.getState() == AudioRecord.STATE_INITIALIZED) return recorder;
+                recorder.release();
+            } catch (Exception ignored) {}
+            return null;
+        }
+
+        private void pumpNativeMicrophone(AudioRecord recorder) {
+            try {
+                android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+            } catch (Exception ignored) {}
+
+            byte[] pcm = new byte[NATIVE_MIC_CHUNK_BYTES];
+            try {
+                while (nativeMicrophoneRunning && nativeAudioRecord == recorder) {
+                    int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
+                    if (count > 0) {
+                        String encoded = Base64.encodeToString(
+                                count == pcm.length ? pcm : java.util.Arrays.copyOf(pcm, count),
+                                Base64.NO_WRAP
+                        );
+                        dispatchNativeAudio(encoded);
+                    } else if (count < 0) {
+                        dispatchNativeAudioError("Lecture du micro natif interrompue");
+                        break;
+                    }
+                }
+            } catch (Exception error) {
+                dispatchNativeAudioError("Le micro natif s’est arrêté");
+            } finally {
+                boolean ownsRecorder = false;
+                synchronized (nativeMicrophoneLock) {
+                    if (nativeAudioRecord == recorder) {
+                        nativeMicrophoneRunning = false;
+                        nativeAudioRecord = null;
+                        nativeAudioThread = null;
+                        ownsRecorder = true;
+                    }
+                }
+                if (ownsRecorder) {
+                    try { recorder.stop(); } catch (Exception ignored) {}
+                    try { recorder.release(); } catch (Exception ignored) {}
+                }
+            }
+        }
+
+        private void dispatchNativeAudio(String encoded) {
+            WebView target = webView;
+            if (target == null) return;
+            target.post(() -> {
+                if (webView != null) {
+                    webView.evaluateJavascript(
+                            "window.GrokNativeAudio&&window.GrokNativeAudio.push('" + encoded + "',48000)",
+                            null
+                    );
+                }
+            });
+        }
+
+        private void dispatchNativeAudioError(String message) {
+            WebView target = webView;
+            if (target == null) return;
+            String safeMessage = message.replace("'", "");
+            target.post(() -> {
+                if (webView != null) {
+                    webView.evaluateJavascript(
+                            "window.GrokNativeAudio&&window.GrokNativeAudio.error('" + safeMessage + "')",
+                            null
+                    );
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void stopNativeMicrophone() {
+            AudioRecord recorder;
+            Thread thread;
+            synchronized (nativeMicrophoneLock) {
+                nativeMicrophoneRunning = false;
+                recorder = nativeAudioRecord;
+                thread = nativeAudioThread;
+                nativeAudioRecord = null;
+                nativeAudioThread = null;
+            }
+            if (recorder != null) {
+                try { recorder.stop(); } catch (Exception ignored) {}
+            }
+            if (thread != null && thread != Thread.currentThread()) {
+                try { thread.join(500); } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            if (recorder != null) {
+                try { recorder.release(); } catch (Exception ignored) {}
+            }
         }
 
         @JavascriptInterface
@@ -354,6 +521,7 @@ public final class MainActivity extends Activity {
         }
 
         void cancelAll() {
+            stopNativeMicrophone();
             for (String sessionId : new ArrayList<>(sessions.keySet())) cancelSave(sessionId);
         }
 
