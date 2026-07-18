@@ -1,5 +1,5 @@
-const CACHE_NAME = 'grok-teleprompter-studio-v4';
-const APP_SHELL = ['./', './index.html', './style.css', './script.js', './facecam.js', './tiny.js', './manifest.json'];
+const CACHE_NAME = 'grok-teleprompter-studio-v6';
+const APP_SHELL = ['./', './index.html', './style.css', './script.js', './manifest.json', './icon-512.png'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
