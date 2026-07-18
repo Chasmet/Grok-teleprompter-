@@ -244,7 +244,15 @@
   function updateTeleScrollMode() {
     if (elements.teleprompter.classList.contains('hide')) return false;
     const availableHeight = Math.max(1, elements.teleprompter.clientHeight - 44);
-    const textHeight = Math.max(1, elements.teleText.scrollHeight);
+    const preferredSize = clamp(Number(elements.sizeRange.value) || 36, 18, 86);
+    elements.teleText.style.fontSize = `${preferredSize}px`;
+    let textHeight = Math.max(1, elements.teleText.scrollHeight);
+    const wordCount = elements.scriptInput.value.trim().split(/\s+/).filter(Boolean).length;
+    if (wordCount <= 34 && textHeight > availableHeight) {
+      const fittedSize = clamp(Math.floor(preferredSize * availableHeight / textHeight), 18, preferredSize);
+      elements.teleText.style.fontSize = `${fittedSize}px`;
+      textHeight = Math.max(1, elements.teleText.scrollHeight);
+    }
     state.teleShouldScroll = textHeight > availableHeight;
     elements.teleprompter.dataset.scrollMode = state.teleShouldScroll ? 'scroll' : 'static';
     elements.teleScrollState.textContent = state.teleShouldScroll
