@@ -345,6 +345,7 @@ public final class MainActivity extends Activity {
             }
         }
 
+        @SuppressLint("MissingPermission")
         private AudioRecord createAudioRecord(int source, int bufferSize) {
             try {
                 AudioRecord recorder = new AudioRecord.Builder()
