@@ -4,3 +4,6 @@ app/build/
 local.properties
 *.apk
 *.aab
+node_modules/
+playwright-report/
+test-results/

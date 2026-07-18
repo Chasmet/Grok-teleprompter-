@@ -14,7 +14,7 @@ jobs:
   build:
     name: Vérifier et construire
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
       - name: Récupérer le projet
@@ -34,6 +34,18 @@ jobs:
       - name: Vérifier JavaScript
         run: node --check script.js
 
+      - name: Installer les tests de l’interface
+        run: npm ci
+
+      - name: Exécuter l’audit automatisé
+        run: npm test
+
+      - name: Installer Chromium pour les tests tactiles
+        run: npx playwright install --with-deps chromium
+
+      - name: Tester toutes les fonctions dans un navigateur mobile
+        run: npm run test:e2e
+
       - name: Installer Android SDK 36
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
@@ -43,12 +55,12 @@ jobs:
         run: gradle :app:lintDebug :app:assembleDebug --stacktrace
 
       - name: Renommer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.0.0.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.1.0.apk
 
       - name: Publier l'APK téléchargeable
         uses: actions/upload-artifact@v4
         with:
           name: Grok-Teleprompter-APK
-          path: Grok-Teleprompter-v2.0.0.apk
+          path: Grok-Teleprompter-v2.1.0.apk
           if-no-files-found: error
           retention-days: 30

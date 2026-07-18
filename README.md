@@ -12,8 +12,11 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 - Mode caméra live vertical.
 - Mode vidéo ou image importée.
 - Mode vidéo + facecam déplaçable et redimensionnable.
-- Téléprompteur avec vitesse et taille réglables.
+- Facecam tactile : glisser, pincer ou tirer la poignée de redimensionnement.
+- Téléprompteur tactile : position et cadre réglables directement dans l’aperçu.
+- Texte court fixe ; défilement automatique uniquement lorsque le texte dépasse le cadre.
 - Sauvegarde automatique du texte sur le téléphone.
+- Sauvegarde automatique des positions, tailles, vitesse et préférences.
 - Caméra avant ou arrière et miroir réglable.
 - Zoom et déplacement du média importé, reproduits dans l’export.
 - Export 1080p haute qualité ou 720p fluide.
@@ -40,6 +43,8 @@ L’APK contient l’application web dans ses propres ressources et fonctionne s
 - les permissions caméra et microphone ;
 - le sélecteur Android pour importer une vidéo ou une image ;
 - une origine HTTPS locale sécurisée pour la caméra du WebView ;
+- des demandes caméra et micro séparées avec plusieurs niveaux de repli ;
+- une aide persistante et un accès direct aux autorisations Android en cas d’échec ;
 - l’enregistrement par blocs des grosses vidéos, sans charger tout le fichier en mémoire native ;
 - la sauvegarde directe dans `Films/Grok Teleprompteur` via MediaStore.
 
@@ -50,9 +55,11 @@ Configuration : Android 10 minimum, Android SDK 36, Java 17, Gradle 8.13 et Andr
 Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 
 1. la vérification syntaxique de JavaScript ;
-2. Android Lint ;
-3. la compilation de l’APK de test ;
-4. la publication de `Grok-Teleprompter-v2.0.0.apk` comme artefact téléchargeable.
+2. l’audit statique des autorisations, éléments tactiles et règles du téléprompteur ;
+3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
+4. Android Lint ;
+5. la compilation de l’APK de test ;
+6. la publication de `Grok-Teleprompter-v2.1.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 
@@ -62,3 +69,5 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 - `manifest.json` et `sw.js` : installation PWA et cache hors ligne.
 - `app/` : enveloppe Android native.
 - `.github/workflows/build-apk.yml` : construction automatique de l’APK.
+- `AUDIT.md` : défauts relevés, corrections et matrice de validation.
+- `tests/` : audit statique et scénarios fonctionnels mobiles.

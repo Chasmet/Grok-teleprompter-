@@ -30,12 +30,23 @@
           <div class="empty" id="empty">Importe une vidéo ou une image<br>comme dans CapCut</div>
           <video id="mediaVideo" playsinline muted class="hide"></video>
           <img id="mediaImage" class="hide" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Média importé">
-          <video id="cameraVideo" playsinline muted class="face hide"></video>
+          <div id="faceFrame" class="faceFrame hide" aria-label="Fenêtre facecam tactile">
+            <video id="cameraVideo" playsinline muted></video>
+            <span class="moveBadge" aria-hidden="true">✥</span>
+            <button id="faceResizeHandle" class="resizeHandle" type="button" aria-label="Redimensionner la facecam">↘</button>
+          </div>
           <div id="teleprompter" class="teleprompter">
+            <div id="teleMoveHandle" class="teleMoveHandle" aria-hidden="true">✥ Déplacer le texte</div>
             <div class="teleGuide"></div>
             <div id="teleText" class="teleText"></div>
+            <button id="teleResizeHandle" class="resizeHandle teleResizeHandle" type="button" aria-label="Redimensionner le téléprompteur">↘</button>
           </div>
         </div>
+      </section>
+
+      <section class="gestureHelp" aria-label="Aide tactile">
+        <span>Facecam : glisse pour déplacer · pince ou tire le coin pour redimensionner</span>
+        <span id="teleScrollState">Texte court : reste fixe</span>
       </section>
 
       <section class="recordBar">
@@ -62,25 +73,43 @@
           <label class="btn primary" for="mediaInput">Importer un média</label>
           <button id="cameraBtn" class="btn primary" type="button">Activer la caméra</button>
         </div>
-        <div class="row">
-          <button id="playBtn" class="btn" type="button">▶ Lecture</button>
-          <button id="pauseBtn" class="btn" type="button">Ⅱ Pause</button>
+        <div id="cameraHelp" class="cameraHelp hide" role="alert">
+          <p id="cameraHelpText"></p>
+          <div class="cameraHelpActions">
+            <button id="retryCameraBtn" class="btn small primary" type="button">Réessayer</button>
+            <button id="cameraSettingsBtn" class="btn small" type="button">Réglages Android</button>
+          </div>
         </div>
         <div class="row">
-          <button id="flipBtn" class="btn" type="button">Changer caméra</button>
-          <button id="mirrorBtn" class="btn" type="button">Miroir : ON</button>
+          <button id="playBtn" class="btn" type="button" disabled>▶ Lecture</button>
+          <button id="pauseBtn" class="btn" type="button" disabled>Ⅱ Pause</button>
+        </div>
+        <div class="row">
+          <button id="flipBtn" class="btn" type="button" disabled>Changer caméra</button>
+          <button id="mirrorBtn" class="btn" type="button" disabled>Miroir : ON</button>
         </div>
 
         <div id="faceControls" class="faceControls">
           <div class="row">
-            <button id="minusBtn" class="btn" type="button">Facecam −</button>
-            <button id="plusBtn" class="btn" type="button">Facecam +</button>
+            <button id="minusBtn" class="btn" type="button" disabled>Facecam −</button>
+            <button id="plusBtn" class="btn" type="button" disabled>Facecam +</button>
           </div>
           <div class="row3">
-            <button id="tlBtn" class="btn small" type="button">Haut gauche</button>
-            <button id="trBtn" class="btn small" type="button">Haut droit</button>
-            <button id="brBtn" class="btn small" type="button">Bas droit</button>
+            <button id="tlBtn" class="btn small" type="button" disabled>Haut gauche</button>
+            <button id="trBtn" class="btn small" type="button" disabled>Haut droit</button>
+            <button id="brBtn" class="btn small" type="button" disabled>Bas droit</button>
           </div>
+        </div>
+
+        <div id="teleControls" class="teleControls">
+          <div class="controlTitle">Position et taille du texte</div>
+          <div class="row4">
+            <button id="textUpBtn" class="btn small" type="button">Texte ↑</button>
+            <button id="textDownBtn" class="btn small" type="button">Texte ↓</button>
+            <button id="textSmallerBtn" class="btn small" type="button">Texte −</button>
+            <button id="textLargerBtn" class="btn small" type="button">Texte +</button>
+          </div>
+          <button id="resetLayoutBtn" class="resetLayout" type="button">Réinitialiser les positions</button>
         </div>
       </section>
 
