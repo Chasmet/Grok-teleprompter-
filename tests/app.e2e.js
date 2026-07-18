@@ -144,6 +144,7 @@ test('the Android native microphone takes over when WebView audio is unreadable'
     };
   });
 
+  await page.locator('#mediaInput').setInputFiles('icon-512.png');
   await page.locator('#cameraBtn').click();
   await expect(page.locator('#cameraBtn')).toHaveText('Caméra activée', { timeout: 15_000 });
   await expect(page.locator('#audioLabel')).toContainText('micro Android natif');

@@ -377,13 +377,15 @@ public final class MainActivity extends Activity {
                                 Base64.NO_WRAP
                         );
                         dispatchNativeAudio(encoded);
-                    } else if (count < 0) {
+                    } else if (count < 0 && nativeMicrophoneRunning && nativeAudioRecord == recorder) {
                         dispatchNativeAudioError("Lecture du micro natif interrompue");
                         break;
                     }
                 }
             } catch (Exception error) {
-                dispatchNativeAudioError("Le micro natif s’est arrêté");
+                if (nativeMicrophoneRunning && nativeAudioRecord == recorder) {
+                    dispatchNativeAudioError("Le micro natif s’est arrêté");
+                }
             } finally {
                 boolean ownsRecorder = false;
                 synchronized (nativeMicrophoneLock) {
