@@ -11,7 +11,14 @@
     sizeRange: $('sizeRange'), liveTab: $('liveTab'), mediaTab: $('mediaTab'), faceTab: $('faceTab'),
     recBtn: $('recBtn'), stopBtn: $('stopBtn'), cameraBtn: $('cameraBtn'), flipBtn: $('flipBtn'),
     mirrorBtn: $('mirrorBtn'), playBtn: $('playBtn'), pauseBtn: $('pauseBtn'), audioMode: $('audioMode'),
-    videoQuality: $('videoQuality'), includeMediaAudio: $('includeMediaAudio'), audioMeter: $('audioMeter'),
+    videoQuality: $('videoQuality'), includeMicrophone: $('includeMicrophone'),
+    includeMediaAudio: $('includeMediaAudio'), micVolumeRange: $('micVolumeRange'),
+    mediaVolumeRange: $('mediaVolumeRange'), micVolumeValue: $('micVolumeValue'),
+    mediaVolumeValue: $('mediaVolumeValue'), microphoneToggleLabel: $('microphoneToggleLabel'),
+    mediaAudioToggleLabel: $('mediaAudioToggleLabel'), activateMicBtn: $('activateMicBtn'),
+    microphoneHelp: $('microphoneHelp'), microphoneHelpText: $('microphoneHelpText'),
+    retryMicrophoneBtn: $('retryMicrophoneBtn'), microphoneSettingsBtn: $('microphoneSettingsBtn'),
+    audioMeter: $('audioMeter'),
     audioPeak: $('audioPeak'), audioLabel: $('audioLabel'), recordQuality: $('recordQuality'),
     cameraHelp: $('cameraHelp'), cameraHelpText: $('cameraHelpText'), retryCameraBtn: $('retryCameraBtn'),
     cameraSettingsBtn: $('cameraSettingsBtn'), teleMoveHandle: $('teleMoveHandle'),
@@ -27,7 +34,8 @@
     mode: 'facecam', mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '',
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
-    audioGraph: null, audioMeterId: 0, facingMode: 'user', mirrored: true,
+    audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
+    facingMode: 'user', mirrored: true,
     face: { ...DEFAULT_FACE }, facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
     teleShouldScroll: false,
@@ -53,6 +61,9 @@
   const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const selectedProfile = () => AUDIO_PROFILES[elements.audioMode.value] || AUDIO_PROFILES.studio;
+  const wantsMicrophone = () => elements.includeMicrophone.checked;
+  const microphoneVolume = () => clamp(Number(elements.micVolumeRange.value) || 0, 0, 200) / 100;
+  const mediaVolume = () => clamp(Number(elements.mediaVolumeRange.value) || 0, 0, 100) / 100;
   const liveTracks = (stream, kind) => stream?.getTracks().filter((track) => track.kind === kind && track.readyState === 'live') || [];
   const hasLiveCamera = () => liveTracks(state.cameraStream, 'video').length > 0;
   const hasLiveMicrophone = () => liveTracks(state.micOnlyStream, 'audio').length > 0;
@@ -83,14 +94,33 @@
   function updateAudioLabel() {
     const profile = selectedProfile();
     const track = liveTracks(state.micOnlyStream, 'audio')[0] || liveTracks(state.cameraStream, 'audio')[0];
+    if (!wantsMicrophone()) {
+      elements.audioLabel.textContent = `${profile.label} · micro coupé volontairement`;
+      elements.activateMicBtn.textContent = 'Réactiver le micro';
+      return;
+    }
     if (!track) {
-      elements.audioLabel.textContent = `${profile.label} · micro non activé`;
+      elements.audioLabel.textContent = `${profile.label} · aucun micro actif`;
+      elements.activateMicBtn.textContent = state.microphoneStarting ? 'Ouverture du micro…' : 'Activer / tester le micro';
       return;
     }
     const settings = track.getSettings ? track.getSettings() : {};
     const rate = settings.sampleRate ? `${Math.round(settings.sampleRate / 1000)} kHz` : 'haute qualité';
     const channels = settings.channelCount === 2 ? 'stéréo' : 'mono';
     elements.audioLabel.textContent = `${profile.label} · ${rate} · ${channels}`;
+    elements.activateMicBtn.textContent = 'Micro actif · tester ma voix';
+  }
+
+  function updateMixerUi() {
+    const micPercent = Math.round(microphoneVolume() * 100);
+    const videoPercent = elements.includeMediaAudio.checked ? Math.round(mediaVolume() * 100) : 0;
+    elements.microphoneToggleLabel.textContent = wantsMicrophone() ? '🎙 Micro : ON' : '🔇 Micro : OFF';
+    elements.mediaAudioToggleLabel.textContent = elements.includeMediaAudio.checked ? '🔊 Son vidéo : ON' : '🔇 Son vidéo : OFF';
+    elements.micVolumeValue.textContent = `${micPercent} %`;
+    elements.mediaVolumeValue.textContent = `${videoPercent} %`;
+    elements.micVolumeRange.disabled = !wantsMicrophone();
+    elements.mediaVolumeRange.disabled = !elements.includeMediaAudio.checked;
+    updateAudioLabel();
   }
 
   function updateMirror() {
@@ -333,7 +363,7 @@
     state.micOnlyStream?.getTracks().forEach((track) => track.stop());
     state.micOnlyStream = null;
     stopLiveMeter();
-    updateAudioLabel();
+    updateMixerUi();
   }
 
   function cameraFailureText(error) {
@@ -399,6 +429,24 @@
     throw lastError || new Error('CameraUnavailable');
   }
 
+  async function installCameraStream(stream) {
+    state.cameraStream = stream;
+    const videoTrack = stream?.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.contentHint = 'motion';
+      videoTrack.addEventListener('ended', () => {
+        if (state.cameraStream && !hasLiveCamera()) {
+          elements.cameraBtn.textContent = 'Réactiver la caméra';
+          updateTabs();
+        }
+      });
+    }
+    elements.cameraVideo.srcObject = stream;
+    await elements.cameraVideo.play();
+    elements.cameraBtn.textContent = 'Caméra activée';
+    updateTabs();
+  }
+
   async function startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
       showStatus('Caméra non compatible avec cet appareil', true, 4500);
@@ -419,19 +467,8 @@
       updateTabs();
       return;
     }
-    const videoTrack = state.cameraStream.getVideoTracks()[0];
-    if (videoTrack) {
-      videoTrack.contentHint = 'motion';
-      videoTrack.addEventListener('ended', () => {
-        if (state.cameraStream && !hasLiveCamera()) {
-          elements.cameraBtn.textContent = 'Réactiver la caméra';
-          updateTabs();
-        }
-      });
-    }
-    elements.cameraVideo.srcObject = state.cameraStream;
     try {
-      await elements.cameraVideo.play();
+      await installCameraStream(state.cameraStream);
     } catch (error) {
       await stopCameraVideo();
       showCameraHelp(error);
@@ -441,30 +478,139 @@
       return;
     }
     elements.cameraBtn.disabled = false;
-    elements.cameraBtn.textContent = 'Caméra activée';
-    updateTabs();
-    const microphone = await ensureMicrophone();
+    const microphone = wantsMicrophone() ? await ensureMicrophone() : null;
     updateAudioLabel();
     if (microphone) startLiveMeter(microphone);
-    showStatus(microphone ? 'Caméra et micro prêts' : 'Caméra prête · micro non disponible', !microphone, 4200);
+    showStatus(microphone || !wantsMicrophone()
+      ? (microphone ? 'Caméra et micro prêts' : 'Caméra prête · micro coupé')
+      : 'Caméra prête · micro non disponible', wantsMicrophone() && !microphone, 4200);
+  }
+
+  function microphoneFailureText(error) {
+    if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') {
+      return 'Le microphone est refusé. Appuie sur « Réglages Android », puis autorise Microphone pour cette application.';
+    }
+    if (error?.name === 'NotReadableError' || error?.name === 'AbortError') {
+      return 'Le microphone est occupé ou bloqué. Ferme les autres applications utilisant le micro, puis réessaie.';
+    }
+    if (error?.name === 'NotFoundError' || error?.name === 'DevicesNotFoundError') {
+      return 'Aucun microphone n’a été détecté sur le téléphone.';
+    }
+    return `Impossible d’ouvrir le microphone (${error?.name || 'erreur inconnue'}).`;
+  }
+
+  function showMicrophoneHelp(error) {
+    state.micLastError = error;
+    elements.microphoneHelpText.textContent = microphoneFailureText(error);
+    elements.microphoneHelp.classList.remove('hide');
+    updateMixerUi();
+    console.error('Échec microphone', error);
+  }
+
+  async function openAudioOnly() {
+    const profile = selectedProfile();
+    const attempts = [
+      audioConstraints(),
+      {
+        channelCount: { ideal: profile.channels },
+        echoCancellation: { ideal: profile.echoCancellation },
+        noiseSuppression: { ideal: profile.noiseSuppression },
+        autoGainControl: { ideal: profile.autoGainControl }
+      },
+      true
+    ];
+    let lastError = null;
+    for (const constraints of attempts) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: constraints, video: false });
+        if (liveTracks(stream, 'audio').length) return stream;
+        stream.getTracks().forEach((track) => track.stop());
+      } catch (error) {
+        lastError = error;
+        if (error.name === 'NotAllowedError' || error.name === 'SecurityError') break;
+        await delay(error.name === 'NotReadableError' ? 350 : 120);
+      }
+    }
+    throw lastError || new Error('MicrophoneUnavailable');
+  }
+
+  async function recoverCombinedCameraAndMicrophone() {
+    if (!hasLiveCamera()) return null;
+    const previousCamera = state.cameraStream;
+    previousCamera?.getTracks().forEach((track) => track.stop());
+    state.cameraStream = null;
+    elements.cameraVideo.srcObject = null;
+    await delay(450);
+    let combined = null;
+    try {
+      combined = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: state.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: audioConstraints()
+      });
+      const videoTracks = combined.getVideoTracks();
+      const audioTracks = combined.getAudioTracks();
+      if (!videoTracks.length || !audioTracks.length) throw new Error('CombinedCaptureIncomplete');
+      const cameraStream = new MediaStream(videoTracks);
+      const microphoneStream = new MediaStream(audioTracks);
+      await installCameraStream(cameraStream);
+      return microphoneStream;
+    } catch (error) {
+      combined?.getTracks().forEach((track) => track.stop());
+      try {
+        const cameraStream = await openCameraVideo();
+        await installCameraStream(cameraStream);
+      } catch (cameraError) {
+        showCameraHelp(cameraError);
+      }
+      throw error;
+    }
+  }
+
+  async function openMicrophone() {
+    state.microphoneStarting = true;
+    updateMixerUi();
+    state.micOnlyStream?.getTracks().forEach((track) => track.stop());
+    state.micOnlyStream = null;
+    let microphone = null;
+    try {
+      microphone = await openAudioOnly();
+    } catch (error) {
+      if (hasLiveCamera() && error.name !== 'NotAllowedError' && error.name !== 'SecurityError') {
+        try { microphone = await recoverCombinedCameraAndMicrophone(); }
+        catch (combinedError) { error = combinedError; }
+      }
+      if (!microphone) {
+        showMicrophoneHelp(error);
+        showStatus('Micro absent · l’enregistrement vocal est bloqué', true, 5200);
+        return null;
+      }
+    } finally {
+      state.microphoneStarting = false;
+      updateMixerUi();
+    }
+    state.micOnlyStream = microphone;
+    const track = microphone.getAudioTracks()[0];
+    if (track) {
+      track.enabled = true;
+      track.contentHint = elements.audioMode.value === 'music' ? 'music' : 'speech';
+      track.addEventListener('ended', () => {
+        if (wantsMicrophone()) showMicrophoneHelp(new DOMException('La piste micro s’est arrêtée', 'NotReadableError'));
+        updateMixerUi();
+      });
+    }
+    state.micLastError = null;
+    elements.microphoneHelp.classList.add('hide');
+    updateMixerUi();
+    return microphone;
   }
 
   async function ensureMicrophone() {
+    if (!wantsMicrophone()) return null;
     if (hasLiveMicrophone()) return state.micOnlyStream;
-    state.micOnlyStream?.getTracks().forEach((track) => track.stop());
-    state.micOnlyStream = null;
-    try {
-      state.micOnlyStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints(), video: false });
-      const track = state.micOnlyStream.getAudioTracks()[0];
-      if (track) track.contentHint = elements.audioMode.value === 'music' ? 'music' : 'speech';
-      updateAudioLabel();
-      return state.micOnlyStream;
-    } catch (error) {
-      showStatus(error.name === 'NotReadableError'
-        ? 'Micro occupé par une autre application'
-        : 'Autorise le micro pour enregistrer ta voix', true, 4500);
-      return null;
+    if (!state.microphonePromise) {
+      state.microphonePromise = openMicrophone().finally(() => { state.microphonePromise = null; });
     }
+    return state.microphonePromise;
   }
 
   function createContext() {
@@ -493,7 +639,7 @@
     compressor.attack.value = .005;
     compressor.release.value = .18;
     const gain = context.createGain();
-    gain.gain.value = profile.gain;
+    gain.gain.value = profile.gain * microphoneVolume();
     const analyser = context.createAnalyser();
     analyser.fftSize = 512;
     analyser.smoothingTimeConstant = .78;
@@ -502,7 +648,7 @@
   }
 
   function captureMediaAudio() {
-    if (state.mediaType !== 'video' || !elements.includeMediaAudio.checked) return null;
+    if (state.mode === 'live' || state.mediaType !== 'video' || !elements.includeMediaAudio.checked) return null;
     const capture = elements.mediaVideo.captureStream || elements.mediaVideo.mozCaptureStream;
     if (!capture) return null;
     try {
@@ -512,14 +658,27 @@
   }
 
   async function buildAudioGraph() {
-    const micStream = await ensureMicrophone();
+    const microphoneRequested = wantsMicrophone();
+    const micStream = microphoneRequested ? await ensureMicrophone() : null;
+    if (microphoneRequested && !micStream) {
+      return { stream: new MediaStream(), context: null, analyser: null, micIncluded: false, mediaIncluded: false, micMissing: true };
+    }
     const mediaAudio = captureMediaAudio();
-    if (!micStream && !mediaAudio) return null;
+    if (!micStream && !mediaAudio) {
+      return { stream: new MediaStream(), context: null, analyser: null, micIncluded: false, mediaIncluded: false };
+    }
     const context = createContext();
     if (!context) {
       const fallback = new MediaStream();
-      (micStream || mediaAudio).getAudioTracks().forEach((track) => fallback.addTrack(track));
-      return { stream: fallback, context: null, analyser: null };
+      const preferredStream = micStream || mediaAudio;
+      preferredStream?.getAudioTracks().forEach((track) => fallback.addTrack(track));
+      return {
+        stream: fallback,
+        context: null,
+        analyser: null,
+        micIncluded: Boolean(micStream),
+        mediaIncluded: Boolean(!micStream && mediaAudio)
+      };
     }
     await context.resume();
     const destination = context.createMediaStreamDestination();
@@ -535,10 +694,16 @@
     if (mediaAudio) {
       const mediaSource = context.createMediaStreamSource(mediaAudio);
       const mediaGain = context.createGain();
-      mediaGain.gain.value = .82;
+      mediaGain.gain.value = mediaVolume();
       mediaSource.connect(mediaGain).connect(limiter);
     }
-    return { stream: destination.stream, context, analyser };
+    return {
+      stream: destination.stream,
+      context,
+      analyser,
+      micIncluded: Boolean(micStream),
+      mediaIncluded: Boolean(mediaAudio)
+    };
   }
 
   function meterLoop(analyser) {
@@ -701,11 +866,13 @@
       elements.cameraBtn, elements.flipBtn, elements.mirrorBtn, elements.audioMode,
       elements.videoQuality, elements.playBtn, elements.pauseBtn, elements.textUpBtn,
       elements.textDownBtn, elements.textSmallerBtn, elements.textLargerBtn,
-      elements.resetLayoutBtn
+      elements.resetLayoutBtn, elements.includeMicrophone, elements.includeMediaAudio,
+      elements.micVolumeRange, elements.mediaVolumeRange, elements.activateMicBtn
     ].forEach((item) => { item.disabled = recording; });
     if (!recording) {
       displayImportedMedia();
       updateTabs();
+      updateMixerUi();
     }
   }
 
@@ -732,9 +899,10 @@
     if (state.mediaType === 'video' && state.mode !== 'live') await elements.mediaVideo.play().catch(() => {});
     stopLiveMeter();
     const audioGraph = await buildAudioGraph();
-    if (!audioGraph?.stream?.getAudioTracks().length) {
-      showStatus('Aucune piste audio disponible', true, 4500);
-      if (state.micOnlyStream) startLiveMeter(state.micOnlyStream);
+    if (audioGraph?.micMissing) {
+      if (state.mediaType === 'video') elements.mediaVideo.pause();
+      showMicrophoneHelp(state.micLastError || new DOMException('Microphone indisponible', 'NotReadableError'));
+      showStatus('Enregistrement annulé : aucun micro actif', true, 5200);
       return;
     }
     state.audioGraph = audioGraph;
@@ -772,7 +940,10 @@
     startTeleprompter();
     requestWakeLock();
     const profile = selectedProfile();
-    elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · audio ${profile.label} 256 kb/s`;
+    const audioParts = [];
+    if (audioGraph.micIncluded) audioParts.push(`micro ${Math.round(microphoneVolume() * 100)} %`);
+    if (audioGraph.mediaIncluded) audioParts.push(`vidéo ${Math.round(mediaVolume() * 100)} %`);
+    elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
     showStatus('Enregistrement lancé · audio haute qualité');
   }
 
@@ -875,6 +1046,12 @@
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
       localStorage.setItem('grokTeleprompterSpeed', elements.speedRange.value);
       localStorage.setItem('grokTeleprompterSize', elements.sizeRange.value);
+      localStorage.setItem('grokTeleprompterMixer', JSON.stringify({
+        microphone: wantsMicrophone(),
+        microphoneVolume: Math.round(microphoneVolume() * 100),
+        mediaAudio: elements.includeMediaAudio.checked,
+        mediaVolume: Math.round(mediaVolume() * 100)
+      }));
       localStorage.setItem('grokTeleprompterLayout', JSON.stringify({
         face: state.face,
         teleBox: state.teleBox,
@@ -903,11 +1080,20 @@
       const speed = localStorage.getItem('grokTeleprompterSpeed');
       const size = localStorage.getItem('grokTeleprompterSize');
       const layout = JSON.parse(localStorage.getItem('grokTeleprompterLayout') || 'null');
+      const mixer = JSON.parse(localStorage.getItem('grokTeleprompterMixer') || 'null');
       if (script !== null) elements.scriptInput.value = script;
       if (audio && AUDIO_PROFILES[audio]) elements.audioMode.value = audio;
       if (quality === '720' || quality === '1080') elements.videoQuality.value = quality;
       if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
       if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
+      if (mixer) {
+        elements.includeMicrophone.checked = mixer.microphone !== false;
+        elements.includeMediaAudio.checked = mixer.mediaAudio === true;
+        const savedMicVolume = Number(mixer.microphoneVolume);
+        const savedMediaVolume = Number(mixer.mediaVolume);
+        if (Number.isFinite(savedMicVolume)) elements.micVolumeRange.value = String(clamp(savedMicVolume, 0, 200));
+        if (Number.isFinite(savedMediaVolume)) elements.mediaVolumeRange.value = String(clamp(savedMediaVolume, 0, 100));
+      }
       state.face = restoreBox(layout?.face, DEFAULT_FACE, .14, .10);
       state.teleBox = restoreBox(layout?.teleBox, DEFAULT_TELE_BOX, .35, .24);
       if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;
@@ -919,11 +1105,25 @@
   elements.faceTab.addEventListener('click', () => setMode('facecam'));
   elements.cameraBtn.addEventListener('click', startCamera);
   elements.retryCameraBtn.addEventListener('click', startCamera);
-  elements.cameraSettingsBtn.addEventListener('click', () => {
-    state.resumeCamera = true;
+  function openAndroidAppSettings(retryCamera = false) {
+    state.resumeCamera = retryCamera || hasLiveCamera();
     if (window.AndroidBridge?.openAppSettings) window.AndroidBridge.openAppSettings();
     else showStatus('Ouvre les réglages Android de l’application pour autoriser caméra et micro', true, 5000);
-  });
+  }
+  async function activateMicrophone() {
+    elements.includeMicrophone.checked = true;
+    updateMixerUi();
+    const microphone = await ensureMicrophone();
+    if (microphone) {
+      startLiveMeter(microphone);
+      showStatus('Micro actif · parle et vérifie la barre de niveau', false, 4500);
+    }
+    saveScript();
+  }
+  elements.cameraSettingsBtn.addEventListener('click', () => openAndroidAppSettings(true));
+  elements.microphoneSettingsBtn.addEventListener('click', () => openAndroidAppSettings(false));
+  elements.retryMicrophoneBtn.addEventListener('click', activateMicrophone);
+  elements.activateMicBtn.addEventListener('click', activateMicrophone);
   elements.recBtn.addEventListener('click', startRecording);
   elements.stopBtn.addEventListener('click', stopRecording);
   elements.download.addEventListener('click', saveRecording);
@@ -954,6 +1154,35 @@
       const microphone = await ensureMicrophone();
       if (microphone) startLiveMeter(microphone);
     }
+  });
+  elements.includeMicrophone.addEventListener('change', async () => {
+    if (wantsMicrophone()) {
+      await activateMicrophone();
+    } else {
+      state.micOnlyStream?.getTracks().forEach((track) => track.stop());
+      state.micOnlyStream = null;
+      state.micLastError = null;
+      elements.microphoneHelp.classList.add('hide');
+      stopLiveMeter();
+      updateMixerUi();
+      saveScript();
+      showStatus('Micro coupé pour les prochains enregistrements');
+    }
+  });
+  elements.includeMediaAudio.addEventListener('change', () => {
+    updateMixerUi();
+    saveScript();
+    showStatus(elements.includeMediaAudio.checked
+      ? `Son de la vidéo activé à ${Math.round(mediaVolume() * 100)} %`
+      : 'Son de la vidéo coupé');
+  });
+  elements.micVolumeRange.addEventListener('input', () => {
+    updateMixerUi();
+    saveScript();
+  });
+  elements.mediaVolumeRange.addEventListener('input', () => {
+    updateMixerUi();
+    saveScript();
   });
   elements.videoQuality.addEventListener('change', async () => {
     saveScript();
@@ -1266,7 +1495,7 @@
   resizeStage();
   applyMediaView();
   updateTeleText(true);
-  updateAudioLabel();
+  updateMixerUi();
 
   if ('serviceWorker' in navigator && location.hostname !== 'appassets.androidplatform.net') {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

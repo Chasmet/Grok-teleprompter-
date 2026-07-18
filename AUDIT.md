@@ -1,4 +1,4 @@
-# Audit complet — Grok Téléprompteur Studio 2.1.0
+# Audit complet — Grok Téléprompteur Studio 2.2.0
 
 Date : 18 juillet 2026
 
@@ -22,6 +22,9 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Téléprompteur | Réglages perdus au redémarrage | Moyenne | Sauvegarde du cadre, de la taille, de la vitesse et du miroir |
 | Audio | Changement de profil audio redémarrait aussi la caméra | Moyenne | Redémarrage du micro uniquement, sans interrompre l’image |
 | Audio | VU-mètre parfois relié au flux vidéo sans audio | Moyenne | Priorité explicite au flux microphone séparé |
+| Audio | L’enregistrement continuait avec le son de la vidéo lorsque le micro échouait | Critique | Enregistrement bloqué tant que le micro activé n’a pas de piste réelle |
+| Audio | Volume du micro et de la vidéo non réglables séparément | Élevée | Mixeur tactile micro 0–200 % et vidéo 0–100 %, avec ON/OFF indépendants |
+| Audio | Son importé trop présent par défaut | Élevée | Son de la vidéo coupé par défaut et micro réglé à 130 % |
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
 | Cycle Android | Absence d’accès direct à la fiche de l’application | Moyenne | Pont natif vers les réglages de l’application |
 
@@ -43,6 +46,8 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Déplacement/redimensionnement du prompt | Test de gestes pointeur |
 | Import d’image et états Lecture/Pause | Test Chromium mobile |
 | Ouverture caméra + micro | Test avec périphériques média simulés |
+| Refus du micro | Test confirmant le blocage de l’enregistrement vocal |
+| Mixeur audio | Test des interrupteurs et barres tactiles indépendantes |
 | Déplacement/redimensionnement facecam | Test de gestes pointeur |
 | Enregistrement et production d’un fichier | Test MediaRecorder + canvas |
 | Syntaxe JavaScript | `node --check` |

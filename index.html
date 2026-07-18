@@ -66,6 +66,38 @@
           <span id="audioPeak">— dB</span>
         </div>
         <progress id="audioMeter" max="1" value="0" aria-label="Niveau du micro"></progress>
+        <button id="activateMicBtn" class="activateMicBtn" type="button">Activer / tester le micro</button>
+      </section>
+
+      <section class="audioMixer" aria-label="Mixeur audio tactile">
+        <div class="mixerTitle">Mixeur audio de l’enregistrement</div>
+        <div class="mixerToggles">
+          <label class="mixerToggle">
+            <input id="includeMicrophone" type="checkbox" checked>
+            <span id="microphoneToggleLabel">🎙 Micro : ON</span>
+          </label>
+          <label class="mixerToggle">
+            <input id="includeMediaAudio" type="checkbox">
+            <span id="mediaAudioToggleLabel">🔇 Son vidéo : OFF</span>
+          </label>
+        </div>
+        <label class="volumeControl" for="micVolumeRange">
+          <span>Volume de ma voix <output id="micVolumeValue">130 %</output></span>
+          <input id="micVolumeRange" type="range" min="0" max="200" step="5" value="130">
+        </label>
+        <label class="volumeControl" for="mediaVolumeRange">
+          <span>Volume de la vidéo importée <output id="mediaVolumeValue">0 %</output></span>
+          <input id="mediaVolumeRange" type="range" min="0" max="100" step="5" value="20" disabled>
+        </label>
+        <p class="mixerHint">Ces volumes concernent le fichier enregistré. Le micro reste prioritaire par défaut.</p>
+      </section>
+
+      <section id="microphoneHelp" class="cameraHelp hide" role="alert">
+        <p id="microphoneHelpText">Le microphone n’est pas disponible.</p>
+        <div class="cameraHelpActions">
+          <button id="retryMicrophoneBtn" class="btn small primary" type="button">Réessayer le micro</button>
+          <button id="microphoneSettingsBtn" class="btn small" type="button">Réglages Android</button>
+        </div>
       </section>
 
       <section class="controls">
@@ -136,10 +168,6 @@
             <option value="1080" selected>1080p haute qualité</option>
             <option value="720">720p fluide</option>
           </select>
-        </label>
-        <label class="checkLabel">
-          <input id="includeMediaAudio" type="checkbox" checked>
-          <span>Inclure le son de la vidéo</span>
         </label>
       </section>
 
