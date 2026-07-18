@@ -9,13 +9,17 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.view.View;
+import android.view.KeyEvent;
 import android.view.Window;
 import android.view.WindowManager;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
@@ -46,6 +50,7 @@ public final class MainActivity extends Activity {
     private PermissionRequest pendingWebPermission;
     private ValueCallback<Uri[]> pendingFileChooser;
     private AndroidBridge androidBridge;
+    private OnBackInvokedCallback backCallback;
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
     @Override
@@ -132,6 +137,14 @@ public final class MainActivity extends Activity {
         androidBridge = new AndroidBridge(getContentResolver());
         webView.addJavascriptInterface(androidBridge, "AndroidBridge");
         webView.loadUrl(START_URL);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            backCallback = this::handleBackNavigation;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    backCallback
+            );
+        }
     }
 
     private boolean isTrustedOrigin(Uri uri) {
@@ -204,14 +217,25 @@ public final class MainActivity extends Activity {
         }
     }
 
-    @Override
-    public void onBackPressed() {
+    private void handleBackNavigation() {
         if (webView != null && webView.canGoBack()) webView.goBack();
-        else super.onBackPressed();
+        else finish();
+    }
+
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+        if (keyCode == KeyEvent.KEYCODE_BACK && Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            handleBackNavigation();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
     }
 
     @Override
     protected void onDestroy() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backCallback != null) {
+            getOnBackInvokedDispatcher().unregisterOnBackInvokedCallback(backCallback);
+        }
         if (pendingWebPermission != null) pendingWebPermission.deny();
         if (pendingFileChooser != null) pendingFileChooser.onReceiveValue(null);
         if (androidBridge != null) androidBridge.cancelAll();
