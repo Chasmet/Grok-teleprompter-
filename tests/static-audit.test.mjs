@@ -13,7 +13,7 @@ test('every interface id is unique', () => {
 
 test('camera and microphone are requested separately', () => {
   assert.match(script, /getUserMedia\(\{ video: attempts\[index\], audio: false \}\)/);
-  assert.match(script, /getUserMedia\(\{ audio: audioConstraints\(\), video: false \}\)/);
+  assert.match(script, /getUserMedia\(\{ audio: constraints, video: false \}\)/);
   assert.doesNotMatch(script, /getUserMedia\(\{\s*video: videoConstraints\(\),\s*audio: audioConstraints\(\)/);
 });
 
@@ -29,4 +29,14 @@ test('the tactile and short-text safeguards stay wired', () => {
   assert.match(script, /textHeight > availableHeight/);
   assert.match(script, /if \(!state\.teleShouldScroll\)/);
   assert.match(script, /grokTeleprompterLayout/);
+});
+
+test('the microphone is required and both audio sources have tactile gains', () => {
+  for (const id of ['includeMicrophone', 'includeMediaAudio', 'micVolumeRange', 'mediaVolumeRange', 'microphoneHelp']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(script, /micMissing: true/);
+  assert.match(script, /profile\.gain \* microphoneVolume\(\)/);
+  assert.match(script, /mediaGain\.gain\.value = mediaVolume\(\)/);
+  assert.match(script, /state\.mode === 'live'.*includeMediaAudio\.checked/);
 });
