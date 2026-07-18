@@ -62,6 +62,7 @@ test('camera, microphone, facecam gestures and recording work together', async (
   expect(await page.locator('#cameraVideo').evaluate((video) => video.readyState)).toBeGreaterThanOrEqual(2);
 
   const frame = page.locator('#faceFrame');
+  await frame.scrollIntoViewIfNeeded();
   const start = await frame.boundingBox();
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
   await page.mouse.down();
@@ -79,7 +80,8 @@ test('camera, microphone, facecam gestures and recording work together', async (
   const enlarged = await frame.boundingBox();
   expect(enlarged.width).toBeGreaterThan(moved.width + 10);
 
-  await page.locator('#includeMediaAudio').check();
+  await page.locator('#mediaAudioToggleLabel').click();
+  await expect(page.locator('#includeMediaAudio')).toBeChecked();
   await page.locator('#mediaVolumeRange').fill('55');
   await expect(page.locator('#mediaVolumeValue')).toHaveText('55 %');
   await page.locator('#micVolumeRange').fill('150');
@@ -115,7 +117,8 @@ test('recording is blocked when an enabled microphone is unavailable', async ({ 
   await expect(page.locator('#download')).toBeHidden();
   await expect(page.locator('#microphoneHelp')).toBeVisible();
 
-  await page.locator('#includeMicrophone').uncheck();
+  await page.locator('#microphoneToggleLabel').click();
+  await expect(page.locator('#includeMicrophone')).not.toBeChecked();
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
   await page.locator('#stopBtn').click();
