@@ -1,7 +1,7 @@
 {
   "name": "Grok Teleprompteur Studio",
   "short_name": "Grok Prompter",
-  "description": "Studio video mobile avec teleprompteur, camera live, video importee et enregistrement.",
+  "description": "Studio vidéo mobile avec téléprompteur, caméra live, facecam et enregistrement audio haute qualité.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -11,10 +11,10 @@
   "lang": "fr",
   "icons": [
     {
-      "src": "icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

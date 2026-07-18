@@ -1,0 +1,54 @@
+name: Construire l'APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Vérifier et construire
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Récupérer le projet
+        uses: actions/checkout@v4
+
+      - name: Installer Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Installer Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Vérifier JavaScript
+        run: node --check script.js
+
+      - name: Installer Android SDK 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Analyser et construire l'APK
+        run: gradle :app:lintDebug :app:assembleDebug --stacktrace
+
+      - name: Renommer l'APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.0.0.apk
+
+      - name: Publier l'APK téléchargeable
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grok-Teleprompter-APK
+          path: Grok-Teleprompter-v2.0.0.apk
+          if-no-files-found: error
+          retention-days: 30
