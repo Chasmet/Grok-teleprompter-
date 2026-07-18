@@ -35,6 +35,7 @@
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
+    recordingStarting: false,
     facingMode: 'user', mirrored: true,
     face: { ...DEFAULT_FACE }, facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
@@ -581,7 +582,7 @@
       }
       if (!microphone) {
         showMicrophoneHelp(error);
-        showStatus('Micro absent · l’enregistrement vocal est bloqué', true, 5200);
+        showStatus('Micro indisponible · la vidéo pourra quand même être enregistrée', true, 5200);
         return null;
       }
     } finally {
@@ -659,13 +660,18 @@
 
   async function buildAudioGraph() {
     const microphoneRequested = wantsMicrophone();
-    const micStream = microphoneRequested ? await ensureMicrophone() : null;
-    if (microphoneRequested && !micStream) {
-      return { stream: new MediaStream(), context: null, analyser: null, micIncluded: false, mediaIncluded: false, micMissing: true };
-    }
+    // Après un échec déjà signalé, Enregistrer démarre immédiatement. Une
+    // nouvelle ouverture du périphérique reste possible avec Réessayer le micro.
+    const micStream = microphoneRequested
+      ? (hasLiveMicrophone() ? state.micOnlyStream : (state.micLastError ? null : await ensureMicrophone()))
+      : null;
+    const microphoneUnavailable = microphoneRequested && !micStream;
     const mediaAudio = captureMediaAudio();
     if (!micStream && !mediaAudio) {
-      return { stream: new MediaStream(), context: null, analyser: null, micIncluded: false, mediaIncluded: false };
+      return {
+        stream: new MediaStream(), context: null, analyser: null,
+        micIncluded: false, mediaIncluded: false, microphoneUnavailable
+      };
     }
     const context = createContext();
     if (!context) {
@@ -677,7 +683,8 @@
         context: null,
         analyser: null,
         micIncluded: Boolean(micStream),
-        mediaIncluded: Boolean(!micStream && mediaAudio)
+        mediaIncluded: Boolean(!micStream && mediaAudio),
+        microphoneUnavailable
       };
     }
     await context.resume();
@@ -702,7 +709,8 @@
       context,
       analyser,
       micIncluded: Boolean(micStream),
-      mediaIncluded: Boolean(mediaAudio)
+      mediaIncluded: Boolean(mediaAudio),
+      microphoneUnavailable
     };
   }
 
@@ -821,29 +829,41 @@
     return { width: makeEven(sourceWidth), height: makeEven(sourceHeight) };
   }
 
-  function pickMimeType() {
-    const candidates = [
+  function recorderMimeTypes(hasAudio) {
+    const candidates = hasAudio ? [
       'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
       'video/mp4',
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
       'video/webm'
+    ] : [
+      'video/mp4;codecs=avc1.42E01E',
+      'video/mp4',
+      'video/webm;codecs=vp9',
+      'video/webm;codecs=vp8',
+      'video/webm'
     ];
-    return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+    const supported = candidates.filter((type) => MediaRecorder.isTypeSupported(type));
+    return [...new Set([...supported, ''])];
   }
 
-  function createRecorder(stream, mimeType, width, height) {
+  function createRecorder(stream, hasAudio, width, height) {
     const pixels = width * height;
-    const options = {
-      audioBitsPerSecond: 256000,
-      videoBitsPerSecond: pixels >= 1800000 ? 12000000 : 6500000
-    };
-    if (mimeType) options.mimeType = mimeType;
-    try { return new MediaRecorder(stream, options); }
-    catch (_) {
-      try { return mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream); }
-      catch (error) { throw new Error(`Format vidéo non compatible (${error.name || 'erreur'})`); }
+    let lastError = null;
+    for (const mimeType of recorderMimeTypes(hasAudio)) {
+      const options = {
+        videoBitsPerSecond: pixels >= 1800000 ? 12000000 : 6500000
+      };
+      if (hasAudio) options.audioBitsPerSecond = 256000;
+      if (mimeType) options.mimeType = mimeType;
+      try { return new MediaRecorder(stream, options); }
+      catch (error) {
+        lastError = error;
+        try { return mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream); }
+        catch (fallbackError) { lastError = fallbackError; }
+      }
     }
+    throw new Error(`Format vidéo non compatible (${lastError?.name || 'erreur'})`);
   }
 
   async function requestWakeLock() {
@@ -860,6 +880,7 @@
   function setRecordingUi(recording) {
     document.body.classList.toggle('recording', recording);
     elements.recBtn.disabled = recording;
+    elements.recBtn.textContent = recording ? '● Enregistrement' : '● Enregistrer';
     elements.stopBtn.disabled = !recording;
     [
       elements.liveTab, elements.mediaTab, elements.faceTab, elements.mediaInput,
@@ -882,6 +903,7 @@
   }
 
   async function startRecording() {
+    if (state.recordingStarting || (state.recorder && state.recorder.state !== 'inactive')) return;
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
       showStatus('Enregistrement non compatible avec ce navigateur', true, 5000);
       return;
@@ -890,6 +912,12 @@
     if (state.mode !== 'live' && !state.mediaType) { showStatus('Importe d’abord une vidéo ou une image', true); return; }
     if (state.mode === 'facecam' && !hasLiveCamera()) { showStatus('Active d’abord la caméra', true); return; }
 
+    state.recordingStarting = true;
+    elements.recBtn.disabled = true;
+    elements.recBtn.textContent = 'Préparation…';
+    elements.recordQuality.textContent = 'Préparation de l’enregistrement…';
+
+    try {
     state.chunks = [];
     state.recordingBlob = null;
     elements.download.style.display = 'none';
@@ -898,12 +926,18 @@
 
     if (state.mediaType === 'video' && state.mode !== 'live') await elements.mediaVideo.play().catch(() => {});
     stopLiveMeter();
-    const audioGraph = await buildAudioGraph();
-    if (audioGraph?.micMissing) {
-      if (state.mediaType === 'video') elements.mediaVideo.pause();
+    let audioGraph;
+    try {
+      audioGraph = await buildAudioGraph();
+    } catch (error) {
+      console.error('Préparation audio impossible', error);
+      audioGraph = {
+        stream: new MediaStream(), context: null, analyser: null,
+        micIncluded: false, mediaIncluded: false, microphoneUnavailable: wantsMicrophone()
+      };
+    }
+    if (audioGraph.microphoneUnavailable) {
       showMicrophoneHelp(state.micLastError || new DOMException('Microphone indisponible', 'NotReadableError'));
-      showStatus('Enregistrement annulé : aucun micro actif', true, 5200);
-      return;
     }
     state.audioGraph = audioGraph;
     meterLoop(audioGraph.analyser);
@@ -922,14 +956,13 @@
     audioGraph.stream.getAudioTracks().forEach((track) => outputStream.addTrack(track));
 
     try {
-      const mimeType = pickMimeType();
-      state.recorder = createRecorder(outputStream, mimeType, size.width, size.height);
+      state.recorder = createRecorder(outputStream, outputStream.getAudioTracks().length > 0, size.width, size.height);
       state.recorder.ondataavailable = (event) => { if (event.data?.size) state.chunks.push(event.data); };
       state.recorder.onerror = (event) => showStatus(`Erreur d’enregistrement : ${event.error?.name || 'inconnue'}`, true, 5000);
       state.recorder.onstop = finishRecording;
       state.recorder.start(1000);
     } catch (error) {
-      cleanupAfterRecording();
+      await cleanupAfterRecording();
       showStatus(error.message, true, 5000);
       return;
     }
@@ -944,7 +977,28 @@
     if (audioGraph.micIncluded) audioParts.push(`micro ${Math.round(microphoneVolume() * 100)} %`);
     if (audioGraph.mediaIncluded) audioParts.push(`vidéo ${Math.round(mediaVolume() * 100)} %`);
     elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
-    showStatus('Enregistrement lancé · audio haute qualité');
+    if (audioGraph.microphoneUnavailable) {
+      showStatus(audioGraph.mediaIncluded
+        ? 'Enregistrement lancé sans micro · son de la vidéo conservé'
+        : 'Enregistrement lancé sans micro · vidéo sans son', true, 6200);
+    } else {
+      showStatus('Enregistrement lancé · audio haute qualité');
+    }
+    } catch (error) {
+      console.error('Démarrage de l’enregistrement impossible', error);
+      if (state.recorder && state.recorder.state !== 'inactive') {
+        state.recorder.onstop = null;
+        try { state.recorder.stop(); } catch (_) {}
+      }
+      await cleanupAfterRecording();
+      showStatus(`Enregistrement impossible : ${error?.message || error?.name || 'erreur inconnue'}`, true, 6200);
+    } finally {
+      state.recordingStarting = false;
+      if (!state.recorder || state.recorder.state === 'inactive') {
+        elements.recBtn.disabled = false;
+        elements.recBtn.textContent = '● Enregistrer';
+      }
+    }
   }
 
   function stopRecording() {

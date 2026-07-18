@@ -1,4 +1,4 @@
-# Audit complet — Grok Téléprompteur Studio 2.2.0
+# Audit complet — Grok Téléprompteur Studio 2.3.0
 
 Date : 18 juillet 2026
 
@@ -22,7 +22,10 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Téléprompteur | Réglages perdus au redémarrage | Moyenne | Sauvegarde du cadre, de la taille, de la vitesse et du miroir |
 | Audio | Changement de profil audio redémarrait aussi la caméra | Moyenne | Redémarrage du micro uniquement, sans interrompre l’image |
 | Audio | VU-mètre parfois relié au flux vidéo sans audio | Moyenne | Priorité explicite au flux microphone séparé |
-| Audio | L’enregistrement continuait avec le son de la vidéo lorsque le micro échouait | Critique | Enregistrement bloqué tant que le micro activé n’a pas de piste réelle |
+| Audio | Lors d’un échec micro, le son de la vidéo pouvait être utilisé sans explication | Critique | Avertissement explicite ; le choix Son vidéo ON/OFF reste respecté |
+| Enregistrement | Le bouton ne lançait rien lorsque le micro était occupé ou refusé | Critique | Suppression du verrou : démarrage vidéo garanti, avertissement clair et repli vers son du média ou vidéo muette |
+| Enregistrement | La préparation audio pouvait donner l’impression d’un bouton figé | Élevée | État visible « Préparation… » et protection contre les doubles appuis |
+| Compatibilité | Un type de fichier avec codec audio pouvait être choisi pour une vidéo sans piste audio | Élevée | Liste de codecs adaptée à la présence réelle d’audio et essais successifs de formats |
 | Audio | Volume du micro et de la vidéo non réglables séparément | Élevée | Mixeur tactile micro 0–200 % et vidéo 0–100 %, avec ON/OFF indépendants |
 | Audio | Son importé trop présent par défaut | Élevée | Son de la vidéo coupé par défaut et micro réglé à 130 % |
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
@@ -46,7 +49,7 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Déplacement/redimensionnement du prompt | Test de gestes pointeur |
 | Import d’image et états Lecture/Pause | Test Chromium mobile |
 | Ouverture caméra + micro | Test avec périphériques média simulés |
-| Refus du micro | Test confirmant le blocage de l’enregistrement vocal |
+| Refus du micro | Test confirmant le démarrage de la vidéo sans piste micro |
 | Mixeur audio | Test des interrupteurs et barres tactiles indépendantes |
 | Déplacement/redimensionnement facecam | Test de gestes pointeur |
 | Enregistrement et production d’un fichier | Test MediaRecorder + canvas |

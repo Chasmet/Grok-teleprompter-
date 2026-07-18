@@ -96,7 +96,7 @@ test('camera, microphone, facecam gestures and recording work together', async (
   await expect(page.locator('#recordQuality')).toContainText('prête à enregistrer');
 });
 
-test('recording is blocked when an enabled microphone is unavailable', async ({ page }) => {
+test('recording still starts when an enabled microphone is unavailable', async ({ page }) => {
   await page.evaluate(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = (constraints) => {
@@ -113,9 +113,12 @@ test('recording is blocked when an enabled microphone is unavailable', async ({ 
   await expect(page.locator('#audioLabel')).toContainText('aucun micro actif');
 
   await page.locator('#recBtn').click();
-  await expect(page.locator('#stopBtn')).toBeDisabled();
-  await expect(page.locator('#download')).toBeHidden();
+  await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  await expect(page.locator('#recordQuality')).toContainText('sans son');
   await expect(page.locator('#microphoneHelp')).toBeVisible();
+  await page.waitForTimeout(500);
+  await page.locator('#stopBtn').click();
+  await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
 
   await page.locator('#microphoneToggleLabel').click();
   await expect(page.locator('#includeMicrophone')).not.toBeChecked();

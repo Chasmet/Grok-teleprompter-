@@ -31,11 +31,13 @@ test('the tactile and short-text safeguards stay wired', () => {
   assert.match(script, /grokTeleprompterLayout/);
 });
 
-test('the microphone is required and both audio sources have tactile gains', () => {
+test('recording falls back without a microphone and both audio sources have tactile gains', () => {
   for (const id of ['includeMicrophone', 'includeMediaAudio', 'micVolumeRange', 'mediaVolumeRange', 'microphoneHelp']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
-  assert.match(script, /micMissing: true/);
+  assert.match(script, /microphoneUnavailable/);
+  assert.doesNotMatch(script, /Enregistrement annulé : aucun micro actif/);
+  assert.match(script, /createRecorder\(outputStream, outputStream\.getAudioTracks\(\)\.length > 0/);
   assert.match(script, /profile\.gain \* microphoneVolume\(\)/);
   assert.match(script, /mediaGain\.gain\.value = mediaVolume\(\)/);
   assert.match(script, /state\.mode === 'live'.*includeMediaAudio\.checked/);
