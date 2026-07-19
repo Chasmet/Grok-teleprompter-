@@ -27,21 +27,26 @@ test('Android declares camera and microphone permissions', () => {
   assert.match(manifest, /android\.permission\.RECORD_AUDIO/);
 });
 
-test('Android provides a clean native 48 kHz microphone when WebView capture fails', () => {
+test('Android exclusively uses its native 48 kHz camcorder microphone', () => {
   assert.match(android, /new AudioRecord\.Builder\(\)/);
-  assert.match(android, /startNativeMicrophone\(String profileName\)/);
+  assert.match(android, /startNativeMicrophone\(String ignoredProfileName\)/);
   assert.match(android, /NATIVE_MIC_SAMPLE_RATE = 48000/);
+  assert.match(android, /requestPermissions\([\s\S]*Manifest\.permission\.RECORD_AUDIO/);
   assert.match(android, /NATIVE_MIC_CHUNK_BYTES = 3840/);
   assert.match(android, /while \(filled < pcm\.length/);
   assert.match(android, /Base64\.encodeToString\(pcm, Base64\.NO_WRAP\)/);
-  assert.match(android, /MediaRecorder\.AudioSource\.UNPROCESSED[\s\S]*MediaRecorder\.AudioSource\.VOICE_RECOGNITION[\s\S]*MediaRecorder\.AudioSource\.MIC[\s\S]*MediaRecorder\.AudioSource\.CAMCORDER/);
   assert.match(android, /MediaRecorder\.AudioSource\.CAMCORDER/);
+  assert.doesNotMatch(android, /MediaRecorder\.AudioSource\.UNPROCESSED/);
+  assert.doesNotMatch(android, /MediaRecorder\.AudioSource\.VOICE_RECOGNITION/);
+  assert.doesNotMatch(android, /MediaRecorder\.AudioSource\.MIC(?:\W|$)/);
   assert.doesNotMatch(android, /NoiseSuppressor/);
   assert.match(android, /calculatePcmRms\(pcm, filled\)/);
   assert.match(android, /dispatchNativeAudio\(String encoded, double rms\)/);
   assert.match(script, /window\.GrokNativeAudio/);
   assert.match(script, /push\(base64Pcm, sampleRate = 48000, nativeRms = 0\)/);
-  assert.match(script, /startNativeMicrophoneFallback/);
+  assert.match(script, /startNativeCameraMicrophone/);
+  assert.match(script, /const androidCameraMicrophone = typeof window\.AndroidBridge\?\.startNativeMicrophone === 'function'/);
+  assert.match(script, /if \(androidCameraMicrophone\) \{[\s\S]*microphone = await startNativeCameraMicrophone\(\)/);
   assert.match(script, /new AudioWorkletNode\(context, 'grok-native-pcm'/);
   assert.match(nativeWorklet, /prebufferFrames/);
   assert.match(nativeWorklet, /fadeInFrames/);
@@ -165,7 +170,7 @@ test('the Android microphone is recorded directly without a second AudioContext'
   assert.match(script, /stream: micStream,[\s\S]*context: null/);
   assert.match(script, /destination\.channelCount = 1/);
   assert.match(script, /mediaSource\.connect\(mediaGain\)\.connect\(native\.limiter\)/);
-  assert.match(script, /micro natif direct 48 kHz/);
+  assert.match(script, /micro caméra direct 48 kHz/);
 });
 
 test('recording falls back without a microphone and both audio sources have tactile gains', () => {

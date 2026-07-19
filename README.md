@@ -40,7 +40,7 @@ Le mode `Voix studio`, activé par défaut, demande une capture 48 kHz et appliq
 
 Deux autres profils sont disponibles : `Voix naturelle` et `Musique / chant`. Les paramètres réellement acceptés peuvent varier selon le micro et la version Android.
 
-Le bouton `Activer / tester le micro` et le VU-mètre permettent de confirmer la présence de la voix avant de filmer. Sur Android, la jauge lit le niveau RMS déjà calculé dans le flux natif, sans ouvrir une seconde chaîne audio. Elle est désactivée pendant le tournage afin de préserver la continuité du son. Le micro natif 48 kHz est envoyé directement à `MediaRecorder`, sans être recapturé dans un deuxième `AudioContext`. Le son de la vidéo importée peut être mélangé dans ce même contexte et possède son propre interrupteur et son propre volume d’enregistrement.
+Le bouton `Activer / tester le micro` et le VU-mètre permettent de confirmer la présence de la voix avant de filmer. Dans l’APK Android, l’application n’essaie plus le micro WebView : elle ouvre exclusivement la source native `CAMCORDER`, celle prévue par Android pour filmer. La jauge lit le niveau RMS de ce même flux, sans ouvrir une seconde chaîne audio, et reste désactivée pendant le tournage. Le micro caméra mono 48 kHz est envoyé directement à `MediaRecorder`. Le son de la vidéo importée peut être mélangé dans ce même contexte et possède son propre interrupteur et son propre volume d’enregistrement.
 
 ## APK Android
 
@@ -56,7 +56,7 @@ L’APK contient l’application web dans ses propres ressources et fonctionne s
 - un raccord adaptatif de 1 ms uniquement lorsqu’un saut anormal est détecté à une frontière de trame ;
 - un seul contexte audio du micro natif jusqu’à l’encodeur AAC, y compris lorsque le son du média est mélangé ;
 - une jauge limitée à 10 mesures par seconde et un rendu vidéo limité à 30 images par seconde pour protéger le thread audio ;
-- la source micro brute `UNPROCESSED` en priorité, puis un repli voix sans traitement agressif ; la source caméscope n’est utilisée qu’en dernier recours ;
+- la source Android `CAMCORDER` exclusivement : aucun micro WebView, `MIC`, `UNPROCESSED` ou reconnaissance vocale dans l’APK ;
 - une aide persistante et un accès direct aux autorisations Android en cas d’échec ;
 - l’enregistrement par blocs des grosses vidéos, sans charger tout le fichier en mémoire native ;
 - la sauvegarde directe dans `Films/Grok Teleprompteur` via MediaStore.
@@ -72,7 +72,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.9.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.10.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 

@@ -108,7 +108,7 @@
       return;
     }
     if (state.nativeMicrophone?.active) {
-      elements.audioLabel.textContent = `${profile.label} · micro téléphone direct · 48 kHz · mono`;
+      elements.audioLabel.textContent = `${profile.label} · micro caméra direct · 48 kHz · mono`;
       elements.activateMicBtn.textContent = 'Micro actif · tester ma voix';
       return;
     }
@@ -628,7 +628,7 @@
     }
   }
 
-  async function startNativeMicrophoneFallback() {
+  async function startNativeCameraMicrophone() {
     const bridge = window.AndroidBridge;
     if (typeof bridge?.startNativeMicrophone !== 'function') return null;
 
@@ -785,7 +785,7 @@
     },
     error(message) {
       if (!state.nativeMicrophone?.active) return;
-      const failure = new DOMException(message || 'Le micro natif s’est arrêté', 'NotReadableError');
+      const failure = new DOMException(message || 'Le micro caméra s’est arrêté', 'NotReadableError');
       stopMicrophoneCapture().finally(() => showMicrophoneHelp(failure));
     }
   };
@@ -796,14 +796,21 @@
     await stopMicrophoneCapture();
     let microphone = null;
     let lastError = null;
-    try {
-      microphone = await openAudioOnly();
-    } catch (error) {
-      lastError = error;
-      microphone = await startNativeMicrophoneFallback();
-      if (!microphone && hasLiveCamera() && error.name !== 'NotAllowedError' && error.name !== 'SecurityError') {
-        try { microphone = await recoverCombinedCameraAndMicrophone(); }
-        catch (combinedError) { lastError = combinedError; }
+    const androidCameraMicrophone = typeof window.AndroidBridge?.startNativeMicrophone === 'function';
+    if (androidCameraMicrophone) {
+      microphone = await startNativeCameraMicrophone();
+      if (!microphone) {
+        lastError = new DOMException('Le micro caméra Android ne peut pas démarrer', 'NotReadableError');
+      }
+    } else {
+      try {
+        microphone = await openAudioOnly();
+      } catch (error) {
+        lastError = error;
+        if (hasLiveCamera() && error.name !== 'NotAllowedError' && error.name !== 'SecurityError') {
+          try { microphone = await recoverCombinedCameraAndMicrophone(); }
+          catch (combinedError) { lastError = combinedError; }
+        }
       }
     }
     if (!microphone) {
@@ -1245,7 +1252,7 @@
     const profile = selectedProfile();
     const audioParts = [];
     if (audioGraph.micIncluded) audioParts.push(audioGraph.nativeDirect
-      ? `micro direct 48 kHz · ${Math.round(microphoneVolume() * 100)} %`
+      ? `micro caméra 48 kHz · ${Math.round(microphoneVolume() * 100)} %`
       : `micro ${Math.round(microphoneVolume() * 100)} %`);
     if (audioGraph.mediaIncluded) audioParts.push(`vidéo ${Math.round(mediaVolume() * 100)} %`);
     elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
@@ -1255,7 +1262,7 @@
         : 'Enregistrement lancé sans micro · vidéo sans son', true, 6200);
     } else {
       showStatus(audioGraph.nativeDirect
-        ? 'Enregistrement lancé · micro natif direct 48 kHz'
+        ? 'Enregistrement lancé · micro caméra direct 48 kHz'
         : 'Enregistrement lancé · audio haute qualité');
     }
     } catch (error) {
