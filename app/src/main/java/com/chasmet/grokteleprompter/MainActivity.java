@@ -270,7 +270,9 @@ public final class MainActivity extends Activity {
 
     public final class AndroidBridge {
         private static final int NATIVE_MIC_SAMPLE_RATE = 48000;
-        private static final int NATIVE_MIC_CHUNK_BYTES = 4096;
+        // 40 ms exactement à 48 kHz mono 16 bits : quatre trames audio de
+        // 10 ms, sans fraction résiduelle aux frontières WebRTC/MediaRecorder.
+        private static final int NATIVE_MIC_CHUNK_BYTES = 3840;
         private final ContentResolver resolver;
         private final Map<String, SaveSession> sessions = new ConcurrentHashMap<>();
         private final Object nativeMicrophoneLock = new Object();
@@ -386,17 +388,30 @@ public final class MainActivity extends Activity {
 
             byte[] pcm = new byte[NATIVE_MIC_CHUNK_BYTES];
             try {
+                captureLoop:
                 while (nativeMicrophoneRunning && nativeAudioRecord == recorder) {
-                    int count = recorder.read(pcm, 0, pcm.length, AudioRecord.READ_BLOCKING);
-                    if (count > 0) {
-                        String encoded = Base64.encodeToString(
-                                count == pcm.length ? pcm : java.util.Arrays.copyOf(pcm, count),
-                                Base64.NO_WRAP
+                    int filled = 0;
+                    while (filled < pcm.length && nativeMicrophoneRunning && nativeAudioRecord == recorder) {
+                        int count = recorder.read(
+                                pcm,
+                                filled,
+                                pcm.length - filled,
+                                AudioRecord.READ_BLOCKING
                         );
-                        dispatchNativeAudio(encoded, calculatePcmRms(pcm, count));
-                    } else if (count < 0 && nativeMicrophoneRunning && nativeAudioRecord == recorder) {
-                        dispatchNativeAudioError("Lecture du micro natif interrompue");
-                        break;
+                        if (count > 0) {
+                            filled += count;
+                        } else if (count < 0) {
+                            if (nativeMicrophoneRunning && nativeAudioRecord == recorder) {
+                                dispatchNativeAudioError("Lecture du micro natif interrompue");
+                            }
+                            break captureLoop;
+                        } else {
+                            Thread.yield();
+                        }
+                    }
+                    if (filled == pcm.length) {
+                        String encoded = Base64.encodeToString(pcm, Base64.NO_WRAP);
+                        dispatchNativeAudio(encoded, calculatePcmRms(pcm, filled));
                     }
                 }
             } catch (Exception error) {
