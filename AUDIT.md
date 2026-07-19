@@ -1,4 +1,4 @@
-# Audit complet — Grok Téléprompteur Studio 2.8.0
+# Audit complet — Grok Téléprompteur Studio 2.9.0
 
 Date : 19 juillet 2026
 
@@ -8,7 +8,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 
 ## Défauts constatés et corrections
 
-| Zone | Défaut constaté | Gravité | Correction 2.8.0 |
+| Zone | Défaut constaté | Gravité | Correction 2.9.0 |
 |---|---|---:|---|
 | Caméra Android | Caméra et micro demandés dans un même appel, source fréquente de `NotReadableError` sur certains WebView | Critique | Ouverture vidéo seule, puis ouverture du micro séparée |
 | Caméra Android | Une seule stratégie de contraintes vidéo | Élevée | Replis progressifs 1080/720, contraintes simples et essais par périphérique |
@@ -34,13 +34,16 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Audio Android | Voix trop poussée, crêtes à 0 dB et traitement agressif dans l’enregistrement réel fourni | Critique | Gain ramené à un niveau naturel, compression plus douce et marge de sécurité anti-saturation |
 | Audio Android | Grésillement régulier aux frontières des trames de 10 ms | Critique | Retrait du `NoiseSuppressor` et priorité à la source brute `UNPROCESSED`, puis `VOICE_RECOGNITION` ; la source caméscope traitée par le constructeur devient le dernier recours |
 | Audio Android | La jauge ouvrait un second graphe audio et le canvas dessinait plus vite que les 30 i/s enregistrées | Critique | Niveau RMS calculé dans les blocs PCM natifs, jauge sans seconde chaîne et inactive pendant l’enregistrement ; composition verrouillée à 30 i/s |
+| Audio Android | Le flux natif déjà converti en `MediaStream` était recapturé et retraité dans un deuxième `AudioContext` | Critique | Connexion directe du flux natif mono 48 kHz à `MediaRecorder` ; le mixage éventuel du média utilise le premier contexte |
+| Audio Android | Blocs natifs de 2 048 échantillons non alignés sur les paquets WebRTC de 480 échantillons | Critique | Blocs de 1 920 échantillons, soit exactement 40 ms et quatre trames de 10 ms |
+| Audio Android | Sauts de phase très supérieurs aux transitoires de la voix aux frontières de 10 ms | Critique | Détection adaptative des seuls sauts anormaux et raccord progressif sur 1 ms avant filtrage et encodage |
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
 | Cycle Android | Absence d’accès direct à la fiche de l’application | Moyenne | Pont natif vers les réglages de l’application |
 | Téléchargement | Action finale encore nommée « Enregistrer » | Faible | Bouton explicite « Télécharger la vidéo » et progression de téléchargement |
 
 ## Qualité audio
 
-Le profil « Voix studio HD » demande une capture 48 kHz mono. Si WebView refuse cette capture malgré l’autorisation Android, l’application ouvre directement `AudioRecord`, en priorité avec la source brute `UNPROCESSED`, puis `VOICE_RECOGNITION`, et transmet le PCM 16 bits à un tampon audio continu. La source `CAMCORDER` n’est plus qu’un dernier recours. Aucun effet `NoiseSuppressor` supplémentaire n’est attaché au flux natif : l’échantillon réel présente ses plus fortes discontinuités exactement toutes les 10 ms, signature d’un traitement audio Android découpé par trames. Le niveau de la jauge est calculé dans ces mêmes blocs et envoyé au maximum dix fois par seconde, sans dupliquer le flux audio. Pendant l’enregistrement, l’analyse de niveau est coupée et le canvas est cadencé à 30 i/s. Le traitement WebAudio conserve un coupe-bas léger, une présence vocale modérée, une compression douce, un limiteur et une marge de sortie anti-saturation, avec un débit cible de 256 kb/s.
+Le profil « Voix studio HD » demande une capture 48 kHz mono. Si WebView refuse cette capture malgré l’autorisation Android, l’application ouvre directement `AudioRecord`, en priorité avec la source brute `UNPROCESSED`, puis `VOICE_RECOGNITION`, et transmet le PCM 16 bits à un tampon audio continu. La source `CAMCORDER` n’est plus qu’un dernier recours. Aucun effet `NoiseSuppressor` supplémentaire n’est attaché au flux natif. Les deux enregistrements réels analysés présentent leurs plus fortes discontinuités exactement toutes les 10 ms. La version 2.9 aligne donc chaque bloc natif sur quatre trames de 10 ms, raccorde sur 1 ms uniquement les sauts anormaux détectés et supprime la recapture du flux dans un deuxième contexte audio. Le filtre vocal, le gain, le limiteur, la jauge et le mixage du média travaillent désormais dans l’unique contexte natif avant une connexion directe à `MediaRecorder`. Pendant l’enregistrement, la jauge est coupée et le canvas est cadencé à 30 i/s. Le débit audio cible reste de 256 kb/s.
 
 La qualité finale reste limitée par le microphone, les traitements réellement acceptés par le constructeur Android et le codec fourni par le WebView.
 
@@ -64,6 +67,8 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Format automatique du média | Test confirmant que le cadre vidéo conserve le ratio du fichier importé |
 | Webcam verticale/horizontale | Test des ratios 9:16 et 16:9 de la seule fenêtre facecam et de la persistance du choix |
 | Jauge sans doublage audio | Contrôle statique de l’absence d’analyseur dans la chaîne d’enregistrement et du niveau natif direct |
+| Micro natif direct | Test confirmant l’absence de second `AudioContext`, le mono direct et le mixage dans le contexte existant |
+| Suppression de clic ciblée | Signal synthétique avec sauts de phase toutes les 10 ms ; contrôle de raccord inférieur à 0,05 |
 | Enregistrement et production d’un fichier | Test MediaRecorder + canvas |
 | Syntaxe JavaScript | `node --check` |
 | Projet Android | Android Lint + compilation APK |

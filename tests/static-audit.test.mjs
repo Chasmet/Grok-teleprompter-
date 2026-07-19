@@ -31,10 +31,13 @@ test('Android provides a clean native 48 kHz microphone when WebView capture fai
   assert.match(android, /new AudioRecord\.Builder\(\)/);
   assert.match(android, /startNativeMicrophone\(String profileName\)/);
   assert.match(android, /NATIVE_MIC_SAMPLE_RATE = 48000/);
+  assert.match(android, /NATIVE_MIC_CHUNK_BYTES = 3840/);
+  assert.match(android, /while \(filled < pcm\.length/);
+  assert.match(android, /Base64\.encodeToString\(pcm, Base64\.NO_WRAP\)/);
   assert.match(android, /MediaRecorder\.AudioSource\.UNPROCESSED[\s\S]*MediaRecorder\.AudioSource\.VOICE_RECOGNITION[\s\S]*MediaRecorder\.AudioSource\.MIC[\s\S]*MediaRecorder\.AudioSource\.CAMCORDER/);
   assert.match(android, /MediaRecorder\.AudioSource\.CAMCORDER/);
   assert.doesNotMatch(android, /NoiseSuppressor/);
-  assert.match(android, /calculatePcmRms\(pcm, count\)/);
+  assert.match(android, /calculatePcmRms\(pcm, filled\)/);
   assert.match(android, /dispatchNativeAudio\(String encoded, double rms\)/);
   assert.match(script, /window\.GrokNativeAudio/);
   assert.match(script, /push\(base64Pcm, sampleRate = 48000, nativeRms = 0\)/);
@@ -43,6 +46,8 @@ test('Android provides a clean native 48 kHz microphone when WebView capture fai
   assert.match(nativeWorklet, /prebufferFrames/);
   assert.match(nativeWorklet, /fadeInFrames/);
   assert.match(nativeWorklet, /fadeOutFrames/);
+  assert.match(nativeWorklet, /packetFrames/);
+  assert.match(nativeWorklet, /suppressPacketClicks/);
   assert.match(androidBuild, /native-audio-worklet\.js/);
   assert.match(serviceWorker, /native-audio-worklet\.js/);
 });
@@ -66,7 +71,7 @@ test('the native PCM worklet keeps adjacent Android chunks continuous', () => {
   const processor = new Processor();
   const frequency = 440;
   for (let chunkIndex = 0; chunkIndex < 3; chunkIndex += 1) {
-    const samples = new Float32Array(2048);
+    const samples = new Float32Array(1920);
     for (let index = 0; index < samples.length; index += 1) {
       const absoluteIndex = chunkIndex * samples.length + index;
       samples[index] = Math.sin(2 * Math.PI * frequency * absoluteIndex / 48000) * .5;
@@ -74,17 +79,56 @@ test('the native PCM worklet keeps adjacent Android chunks continuous', () => {
     processor.port.onmessage({ data: { type: 'pcm', samples } });
   }
 
-  const rendered = new Float32Array(6144);
+  const rendered = new Float32Array(5760);
   for (let offset = 0; offset < rendered.length; offset += 128) {
     const block = new Float32Array(128);
     assert.equal(processor.process([], [[block]]), true);
     rendered.set(block, offset);
   }
 
-  for (const boundary of [2048, 4096]) {
+  for (const boundary of [1920, 3840]) {
     const expected = Math.sin(2 * Math.PI * frequency * boundary / 48000) * .5;
     assert.ok(Math.abs(rendered[boundary] - expected) < 1e-6);
     assert.ok(Math.abs(rendered[boundary] - rendered[boundary - 1]) < .04);
+  }
+  let maxSignalError = 0;
+  for (let index = 128; index < rendered.length; index += 1) {
+    const expected = Math.sin(2 * Math.PI * frequency * index / 48000) * .5;
+    maxSignalError = Math.max(maxSignalError, Math.abs(rendered[index] - expected));
+  }
+  assert.ok(maxSignalError < 1e-6);
+});
+
+test('the native PCM worklet smooths abnormal jumps at 10 ms packet boundaries', () => {
+  let Processor;
+  const sandbox = {
+    sampleRate: 48000,
+    Float32Array,
+    AudioWorkletProcessor: class {
+      constructor() {
+        this.port = { onmessage: null };
+      }
+    },
+    registerProcessor(_name, constructor) {
+      Processor = constructor;
+    }
+  };
+  vm.runInNewContext(nativeWorklet, sandbox);
+  const processor = new Processor();
+  const samples = new Float32Array(5760);
+  for (let index = 0; index < samples.length; index += 1) {
+    samples[index] = Math.floor(index / 480) % 2 === 0 ? .6 : -.6;
+  }
+  processor.port.onmessage({ data: { type: 'pcm', samples } });
+
+  const rendered = new Float32Array(5760);
+  for (let offset = 0; offset < rendered.length; offset += 128) {
+    const block = new Float32Array(128);
+    assert.equal(processor.process([], [[block]]), true);
+    rendered.set(block, offset);
+  }
+  for (let boundary = 480; boundary < rendered.length; boundary += 480) {
+    assert.ok(Math.abs(rendered[boundary] - rendered[boundary - 1]) < .05);
   }
 });
 
@@ -113,6 +157,15 @@ test('the sound meter cannot add a second audio path while recording', () => {
   assert.match(script, /setInterval\(\(\) => drawFrame\(context, canvas\), 1000 \/ 30\)/);
   assert.doesNotMatch(script, /meterLoop\(audioGraph\.analyser\)/);
   assert.doesNotMatch(script, /connect\(gain\)\.connect\(analyser\)/);
+});
+
+test('the Android microphone is recorded directly without a second AudioContext', () => {
+  assert.match(script, /micStream === native\.destination\?\.stream/);
+  assert.match(script, /nativeDirect: true/);
+  assert.match(script, /stream: micStream,[\s\S]*context: null/);
+  assert.match(script, /destination\.channelCount = 1/);
+  assert.match(script, /mediaSource\.connect\(mediaGain\)\.connect\(native\.limiter\)/);
+  assert.match(script, /micro natif direct 48 kHz/);
 });
 
 test('recording falls back without a microphone and both audio sources have tactile gains', () => {

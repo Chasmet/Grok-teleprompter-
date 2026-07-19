@@ -168,13 +168,13 @@ test('the Android native microphone takes over when WebView audio is unreadable'
   await page.locator('#mediaInput').setInputFiles('icon-512.png');
   await page.locator('#cameraBtn').click();
   await expect(page.locator('#cameraBtn')).toHaveText('Caméra activée', { timeout: 15_000 });
-  await expect(page.locator('#audioLabel')).toContainText('micro téléphone HD');
+  await expect(page.locator('#audioLabel')).toContainText('micro téléphone direct');
   await expect(page.locator('#audioLabel')).toContainText('48 kHz');
   await expect(page.locator('#microphoneHelp')).toBeHidden();
 
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
-  await expect(page.locator('#recordQuality')).toContainText('micro');
+  await expect(page.locator('#recordQuality')).toContainText('micro direct 48 kHz');
   await page.waitForTimeout(500);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });

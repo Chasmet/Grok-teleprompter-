@@ -108,7 +108,7 @@
       return;
     }
     if (state.nativeMicrophone?.active) {
-      elements.audioLabel.textContent = `${profile.label} · micro téléphone HD · 48 kHz · mono`;
+      elements.audioLabel.textContent = `${profile.label} · micro téléphone direct · 48 kHz · mono`;
       elements.activateMicBtn.textContent = 'Micro actif · tester ma voix';
       return;
     }
@@ -128,7 +128,19 @@
     elements.mediaVolumeValue.textContent = `${videoPercent} %`;
     elements.micVolumeRange.disabled = !wantsMicrophone();
     elements.mediaVolumeRange.disabled = !elements.includeMediaAudio.checked;
+    updateNativeMicrophoneGain();
     updateAudioLabel();
+  }
+
+  function updateNativeMicrophoneGain() {
+    const native = state.nativeMicrophone;
+    if (!native?.voiceGain || native.context?.state === 'closed') return;
+    const value = selectedProfile().gain * microphoneVolume();
+    try {
+      native.voiceGain.gain.setTargetAtTime(value, native.context.currentTime, .015);
+    } catch (_) {
+      native.voiceGain.gain.value = value;
+    }
   }
 
   function updateMirror() {
@@ -626,6 +638,41 @@
     const context = createContext();
     if (!context?.createMediaStreamDestination) return null;
     const destination = context.createMediaStreamDestination();
+    try {
+      destination.channelCount = 1;
+      destination.channelCountMode = 'explicit';
+    } catch (_) {}
+    const profile = selectedProfile();
+    const highpass = context.createBiquadFilter();
+    highpass.type = 'highpass';
+    highpass.frequency.value = profile.highpass;
+    highpass.Q.value = .7;
+    const presence = context.createBiquadFilter();
+    presence.type = 'peaking';
+    presence.frequency.value = 3000;
+    presence.Q.value = .8;
+    presence.gain.value = profile.presence;
+    const lowpass = context.createBiquadFilter();
+    lowpass.type = 'lowpass';
+    lowpass.frequency.value = elements.audioMode.value === 'music' ? 19500 : 16000;
+    lowpass.Q.value = .55;
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = profile.threshold;
+    compressor.knee.value = 12;
+    compressor.ratio.value = profile.ratio;
+    compressor.attack.value = .008;
+    compressor.release.value = .22;
+    const voiceGain = context.createGain();
+    voiceGain.gain.value = profile.gain * microphoneVolume();
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -4;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = .001;
+    limiter.release.value = .12;
+    const safetyGain = context.createGain();
+    safetyGain.gain.value = .74;
+    highpass.connect(presence).connect(lowpass).connect(compressor).connect(voiceGain).connect(limiter).connect(safetyGain).connect(destination);
     let worklet = null;
     if (context.audioWorklet && window.AudioWorkletNode) {
       try {
@@ -638,7 +685,7 @@
           numberOfOutputs: 1,
           outputChannelCount: [1]
         });
-        worklet.connect(destination);
+        worklet.connect(highpass);
       } catch (error) {
         console.warn('Tampon AudioWorklet indisponible, repli compatible', error);
       }
@@ -648,6 +695,9 @@
       context,
       destination,
       worklet,
+      inputNode: highpass,
+      voiceGain,
+      limiter,
       sampleRate: 48000,
       nextTime: 0,
       lastMeterAt: 0
@@ -721,7 +771,7 @@
         buffer.copyToChannel(samples, 0);
         const source = context.createBufferSource();
         source.buffer = buffer;
-        source.connect(native.destination);
+        source.connect(native.inputNode);
         const now = context.currentTime;
         if (!native.nextTime || native.nextTime < now - .08 || native.nextTime > now + .45) {
           native.nextTime = now + .18;
@@ -848,6 +898,36 @@
       return {
         stream: new MediaStream(), context: null, analyser: null,
         micIncluded: false, mediaIncluded: false, microphoneUnavailable
+      };
+    }
+    const native = state.nativeMicrophone;
+    const nativeDirect = Boolean(
+      native?.active
+      && native.context?.state !== 'closed'
+      && micStream === native.destination?.stream
+    );
+    if (nativeDirect) {
+      updateNativeMicrophoneGain();
+      let mediaSource = null;
+      let mediaGain = null;
+      if (mediaAudio) {
+        mediaSource = native.context.createMediaStreamSource(mediaAudio);
+        mediaGain = native.context.createGain();
+        mediaGain.gain.value = mediaVolume();
+        mediaSource.connect(mediaGain).connect(native.limiter);
+      }
+      return {
+        stream: micStream,
+        context: null,
+        analyser: null,
+        micIncluded: true,
+        mediaIncluded: Boolean(mediaAudio),
+        microphoneUnavailable: false,
+        nativeDirect: true,
+        disconnect() {
+          try { mediaSource?.disconnect(); } catch (_) {}
+          try { mediaGain?.disconnect(); } catch (_) {}
+        }
       };
     }
     const context = createContext();
@@ -1164,7 +1244,9 @@
     requestWakeLock();
     const profile = selectedProfile();
     const audioParts = [];
-    if (audioGraph.micIncluded) audioParts.push(`micro ${Math.round(microphoneVolume() * 100)} %`);
+    if (audioGraph.micIncluded) audioParts.push(audioGraph.nativeDirect
+      ? `micro direct 48 kHz · ${Math.round(microphoneVolume() * 100)} %`
+      : `micro ${Math.round(microphoneVolume() * 100)} %`);
     if (audioGraph.mediaIncluded) audioParts.push(`vidéo ${Math.round(mediaVolume() * 100)} %`);
     elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
     if (audioGraph.microphoneUnavailable) {
@@ -1172,7 +1254,9 @@
         ? 'Enregistrement lancé sans micro · son de la vidéo conservé'
         : 'Enregistrement lancé sans micro · vidéo sans son', true, 6200);
     } else {
-      showStatus('Enregistrement lancé · audio haute qualité');
+      showStatus(audioGraph.nativeDirect
+        ? 'Enregistrement lancé · micro natif direct 48 kHz'
+        : 'Enregistrement lancé · audio haute qualité');
     }
     } catch (error) {
       console.error('Démarrage de l’enregistrement impossible', error);
@@ -1208,6 +1292,7 @@
     if (state.mediaType === 'video') elements.mediaVideo.pause();
     clearTimeout(state.audioMeterId);
     state.audioMeterId = 0;
+    try { state.audioGraph?.disconnect?.(); } catch (_) {}
     if (state.audioGraph?.context) await state.audioGraph.context.close().catch(() => {});
     state.audioGraph = null;
     releaseWakeLock();

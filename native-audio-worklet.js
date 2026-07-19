@@ -11,6 +11,15 @@ class GrokNativePcmProcessor extends AudioWorkletProcessor {
     this.lastOutput = 0;
     this.prebufferFrames = Math.max(2048, Math.round(sampleRate * .09));
     this.maxBufferFrames = Math.round(sampleRate * .75);
+    this.packetFrames = Math.max(1, Math.round(sampleRate * .01));
+    this.declickFrames = Math.max(32, Math.round(sampleRate * .001));
+    this.receivedFrames = 0;
+    this.hasPreviousInput = false;
+    this.previousInput = 0;
+    this.previousProcessed = 0;
+    this.derivativeEnvelope = 0;
+    this.declickRemaining = 0;
+    this.declickAnchor = 0;
 
     this.port.onmessage = ({ data }) => {
       if (data?.type === 'stop') {
@@ -24,6 +33,7 @@ class GrokNativePcmProcessor extends AudioWorkletProcessor {
         ? data.samples
         : new Float32Array(data.samples);
       if (!samples.length) return;
+      this.suppressPacketClicks(samples);
       this.queue.push(samples);
       this.availableFrames += samples.length;
 
@@ -36,6 +46,36 @@ class GrokNativePcmProcessor extends AudioWorkletProcessor {
         this.fadeOutFrames = 64;
       }
     };
+  }
+
+  suppressPacketClicks(samples) {
+    for (let index = 0; index < samples.length; index += 1) {
+      const raw = samples[index];
+      const derivative = this.hasPreviousInput ? Math.abs(raw - this.previousInput) : 0;
+      const atPacketBoundary = this.receivedFrames > 0
+        && this.receivedFrames % this.packetFrames === 0;
+
+      if (atPacketBoundary && this.hasPreviousInput && this.declickRemaining === 0) {
+        const jump = Math.abs(raw - this.previousProcessed);
+        const threshold = Math.max(.05, Math.min(.08, this.derivativeEnvelope * 5));
+        if (jump > threshold) {
+          this.declickRemaining = this.declickFrames;
+          this.declickAnchor = this.previousProcessed;
+        }
+      }
+
+      if (this.declickRemaining > 0) {
+        const progress = (this.declickFrames - this.declickRemaining + 1) / this.declickFrames;
+        samples[index] = this.declickAnchor + (raw - this.declickAnchor) * progress;
+        this.declickRemaining -= 1;
+      }
+
+      this.derivativeEnvelope = this.derivativeEnvelope * .995 + derivative * .005;
+      this.previousInput = raw;
+      this.previousProcessed = samples[index];
+      this.hasPreviousInput = true;
+      this.receivedFrames += 1;
+    }
   }
 
   dropOldest(frameCount) {
