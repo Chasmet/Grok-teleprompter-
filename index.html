@@ -49,13 +49,27 @@
         <span id="teleScrollState">Texte court : reste fixe</span>
       </section>
 
+      <section class="formatPicker" aria-label="Format de la caméra et de la vidéo finale">
+        <div class="formatTitle">Format caméra et vidéo finale</div>
+        <div class="formatChoices">
+          <label class="formatChoice">
+            <input id="formatVertical" name="videoFormat" type="radio" value="vertical" checked>
+            <span>▯ Vertical <strong>9:16</strong></span>
+          </label>
+          <label class="formatChoice">
+            <input id="formatHorizontal" name="videoFormat" type="radio" value="horizontal">
+            <span>▭ Horizontal <strong>16:9</strong></span>
+          </label>
+        </div>
+      </section>
+
       <section class="recordBar">
         <div>
           <div class="timer" id="timer">00:00</div>
           <div id="recordQuality" class="recordQuality">Prêt</div>
         </div>
         <div class="recordButtons">
-          <button id="recBtn" class="btn rec" type="button">● Enregistrer</button>
+          <button id="recBtn" class="btn rec" type="button">● Filmer</button>
           <button id="stopBtn" class="btn stop" type="button" disabled>■ Stop</button>
         </div>
       </section>
@@ -175,8 +189,8 @@
       <textarea id="scriptInput" spellcheck="true">Bienvenue dans Grok Téléprompteur Studio.
 Regarde la caméra et laisse le texte défiler naturellement.</textarea>
 
-      <button id="download" class="download" type="button">Enregistrer la vidéo sur le téléphone</button>
-      <p class="storageHint">Dans l’APK, la vidéo est enregistrée dans Films/Grok Téléprompteur.</p>
+      <button id="download" class="download" type="button">⬇ Télécharger la vidéo</button>
+      <p class="storageHint">Dans l’APK, la vidéo téléchargée est placée dans Films/Grok Téléprompteur.</p>
     </main>
 
     <input id="mediaInput" type="file" accept="video/*,image/*" hidden>
