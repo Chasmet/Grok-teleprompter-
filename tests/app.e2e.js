@@ -48,7 +48,26 @@ test('image import and media controls remain coherent', async ({ page }) => {
   await expect(page.locator('#pauseBtn')).toBeDisabled();
 });
 
+test('the user chooses a vertical or horizontal final video', async ({ page }) => {
+  await expect(page.locator('#formatVertical')).toBeChecked();
+  await expect(page.locator('#stage')).toHaveAttribute('data-orientation', 'vertical');
+  let stage = await page.locator('#stage').boundingBox();
+  expect(stage.height).toBeGreaterThan(stage.width);
+
+  await page.locator('label.formatChoice').filter({ has: page.locator('#formatHorizontal') }).click();
+  await expect(page.locator('#formatHorizontal')).toBeChecked();
+  await expect(page.locator('#stage')).toHaveAttribute('data-orientation', 'horizontal');
+  stage = await page.locator('#stage').boundingBox();
+  expect(stage.width).toBeGreaterThan(stage.height);
+
+  await page.reload();
+  await expect(page.locator('#formatHorizontal')).toBeChecked();
+  await expect(page.locator('#stage')).toHaveAttribute('data-orientation', 'horizontal');
+});
+
 test('camera, microphone, facecam gestures and recording work together', async ({ page }) => {
+  await page.locator('label.formatChoice').filter({ has: page.locator('#formatHorizontal') }).click();
+  await expect(page.locator('#formatHorizontal')).toBeChecked();
   await page.locator('#mediaInput').setInputFiles('icon-512.png');
   await expect(page.locator('#includeMicrophone')).toBeChecked();
   await expect(page.locator('#includeMediaAudio')).not.toBeChecked();
@@ -90,10 +109,12 @@ test('camera, microphone, facecam gestures and recording work together', async (
   await page.locator('#liveTab').click();
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  await expect(page.locator('#recordQuality')).toContainText('Horizontal 16:9');
   await page.waitForTimeout(1200);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
-  await expect(page.locator('#recordQuality')).toContainText('prête à enregistrer');
+  await expect(page.locator('#recordQuality')).toContainText('prête à télécharger');
+  await expect(page.locator('#download')).toHaveText('⬇ Télécharger la vidéo');
 });
 
 test('recording still starts when an enabled microphone is unavailable', async ({ page }) => {

@@ -6,6 +6,7 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioFormat;
@@ -293,6 +294,15 @@ public final class MainActivity extends Activity {
                     toast("Impossible d’ouvrir les réglages Android");
                 }
             });
+        }
+
+        @JavascriptInterface
+        public void setCaptureOrientation(String orientation) {
+            runOnUiThread(() -> setRequestedOrientation(
+                    "horizontal".equals(orientation)
+                            ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                            : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+            ));
         }
 
         /**

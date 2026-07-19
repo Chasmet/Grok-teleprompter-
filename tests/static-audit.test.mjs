@@ -85,12 +85,24 @@ test('the native PCM worklet keeps adjacent Android chunks continuous', () => {
 });
 
 test('the tactile and short-text safeguards stay wired', () => {
-  for (const id of ['faceResizeHandle', 'teleResizeHandle', 'retryCameraBtn', 'cameraSettingsBtn']) {
+  for (const id of ['faceResizeHandle', 'teleResizeHandle', 'retryCameraBtn', 'cameraSettingsBtn', 'formatVertical', 'formatHorizontal']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(script, /textHeight > availableHeight/);
   assert.match(script, /if \(!state\.teleShouldScroll\)/);
   assert.match(script, /grokTeleprompterLayout/);
+});
+
+test('vertical and horizontal camera formats control preview, capture and Android orientation', () => {
+  assert.match(script, /Horizontal 16:9/);
+  assert.match(script, /Vertical 9:16/);
+  assert.match(script, /return high \? \{ width: 1920, height: 1080 \}/);
+  assert.match(script, /return high \? \{ width: 1080, height: 1920 \}/);
+  assert.match(script, /grokTeleprompterOrientation/);
+  assert.match(android, /setCaptureOrientation\(String orientation\)/);
+  assert.match(android, /SCREEN_ORIENTATION_SENSOR_LANDSCAPE/);
+  assert.match(android, /SCREEN_ORIENTATION_SENSOR_PORTRAIT/);
+  assert.match(html, /⬇ Télécharger la vidéo/);
 });
 
 test('recording falls back without a microphone and both audio sources have tactile gains', () => {

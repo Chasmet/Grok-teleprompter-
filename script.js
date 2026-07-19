@@ -16,6 +16,7 @@
     mediaVolumeRange: $('mediaVolumeRange'), micVolumeValue: $('micVolumeValue'),
     mediaVolumeValue: $('mediaVolumeValue'), microphoneToggleLabel: $('microphoneToggleLabel'),
     mediaAudioToggleLabel: $('mediaAudioToggleLabel'), activateMicBtn: $('activateMicBtn'),
+    formatVertical: $('formatVertical'), formatHorizontal: $('formatHorizontal'),
     microphoneHelp: $('microphoneHelp'), microphoneHelpText: $('microphoneHelpText'),
     retryMicrophoneBtn: $('retryMicrophoneBtn'), microphoneSettingsBtn: $('microphoneSettingsBtn'),
     audioMeter: $('audioMeter'),
@@ -66,6 +67,8 @@
   const wantsMicrophone = () => elements.includeMicrophone.checked;
   const microphoneVolume = () => clamp(Number(elements.micVolumeRange.value) || 0, 0, 200) / 100;
   const mediaVolume = () => clamp(Number(elements.mediaVolumeRange.value) || 0, 0, 100) / 100;
+  const selectedOrientation = () => elements.formatHorizontal.checked ? 'horizontal' : 'vertical';
+  const orientationLabel = () => selectedOrientation() === 'horizontal' ? 'Horizontal 16:9' : 'Vertical 9:16';
   const liveTracks = (stream, kind) => stream?.getTracks().filter((track) => track.kind === kind && track.readyState === 'live') || [];
   const hasLiveCamera = () => liveTracks(state.cameraStream, 'video').length > 0;
   const hasLiveMicrophone = () => liveTracks(state.micOnlyStream, 'audio').length > 0;
@@ -85,10 +88,11 @@
 
   function videoConstraints() {
     const high = elements.videoQuality.value === '1080';
+    const horizontal = selectedOrientation() === 'horizontal';
     return {
       facingMode: { ideal: state.facingMode },
-      width: { ideal: high ? 1920 : 1280 },
-      height: { ideal: high ? 1080 : 720 },
+      width: { ideal: high ? (horizontal ? 1920 : 1080) : (horizontal ? 1280 : 720) },
+      height: { ideal: high ? (horizontal ? 1080 : 1920) : (horizontal ? 720 : 1280) },
       frameRate: { ideal: 30, max: 30 }
     };
   }
@@ -163,7 +167,7 @@
       elements.empty.classList.add('hide');
       elements.mediaVideo.classList.add('hide');
       elements.mediaImage.classList.add('hide');
-      setAspect(9, 16);
+      resizeStage();
     } else {
       displayImportedMedia();
     }
@@ -178,7 +182,10 @@
   }
 
   function resizeStage() {
-    const ratio = state.mediaWidth / state.mediaHeight;
+    const orientation = selectedOrientation();
+    const ratio = orientation === 'horizontal' ? 16 / 9 : 9 / 16;
+    elements.stage.dataset.orientation = orientation;
+    document.body.dataset.orientation = orientation;
     const maxWidth = Math.max(120, elements.viewer.clientWidth - 20);
     const maxHeight = Math.max(120, elements.viewer.clientHeight - 20);
     let width = maxWidth;
@@ -221,11 +228,19 @@
 
   function resizeFace(delta) {
     state.face.w = clamp(state.face.w + delta, .14, .58);
-    state.face.h = clamp(state.face.h + delta * .7, .10, .46);
+    state.face.h = clamp(state.face.h + delta * (selectedOrientation() === 'horizontal' ? 1 : .7), .10, .64);
     state.face.x = clamp(state.face.x, 0, 1 - state.face.w);
     state.face.y = clamp(state.face.y, 0, 1 - state.face.h);
     layoutFace();
     saveScript();
+  }
+
+  function adaptFaceToOrientation() {
+    const heightFactor = selectedOrientation() === 'horizontal' ? 1 : .7;
+    state.face.h = clamp(state.face.w * heightFactor, .10, .64);
+    state.face.x = clamp(state.face.x, 0, 1 - state.face.w);
+    state.face.y = clamp(state.face.y, 0, 1 - state.face.h);
+    layoutFace();
   }
 
   function applyMediaView() {
@@ -411,12 +426,13 @@
 
   async function cameraConstraintAttempts() {
     const high = elements.videoQuality.value === '1080';
+    const horizontal = selectedOrientation() === 'horizontal';
     const attempts = [
       videoConstraints(),
       {
         facingMode: { ideal: state.facingMode },
-        width: { ideal: high ? 1280 : 960 },
-        height: { ideal: high ? 720 : 540 },
+        width: { ideal: high ? (horizontal ? 1280 : 720) : (horizontal ? 960 : 540) },
+        height: { ideal: high ? (horizontal ? 720 : 1280) : (horizontal ? 540 : 960) },
         frameRate: { ideal: 30, max: 30 }
       },
       { facingMode: { ideal: state.facingMode } },
@@ -567,8 +583,9 @@
     await delay(450);
     let combined = null;
     try {
+      const combinedVideoConstraints = videoConstraints();
       combined = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: state.facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: combinedVideoConstraints,
         audio: audioConstraints()
       });
       const videoTracks = combined.getVideoTracks();
@@ -974,12 +991,11 @@
   }
 
   function outputSize() {
-    const sourceWidth = state.mode === 'live' ? 1080 : state.mediaWidth;
-    const sourceHeight = state.mode === 'live' ? 1920 : state.mediaHeight;
-    const maxEdge = elements.videoQuality.value === '1080' ? 1920 : 1280;
-    const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
-    const makeEven = (value) => Math.max(2, Math.round(value * scale / 2) * 2);
-    return { width: makeEven(sourceWidth), height: makeEven(sourceHeight) };
+    const high = elements.videoQuality.value === '1080';
+    if (selectedOrientation() === 'horizontal') {
+      return high ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
+    }
+    return high ? { width: 1080, height: 1920 } : { width: 720, height: 1280 };
   }
 
   function recorderMimeTypes(hasAudio) {
@@ -1033,7 +1049,7 @@
   function setRecordingUi(recording) {
     document.body.classList.toggle('recording', recording);
     elements.recBtn.disabled = recording;
-    elements.recBtn.textContent = recording ? '● Enregistrement' : '● Enregistrer';
+    elements.recBtn.textContent = recording ? '● Tournage' : '● Filmer';
     elements.stopBtn.disabled = !recording;
     [
       elements.liveTab, elements.mediaTab, elements.faceTab, elements.mediaInput,
@@ -1041,7 +1057,8 @@
       elements.videoQuality, elements.playBtn, elements.pauseBtn, elements.textUpBtn,
       elements.textDownBtn, elements.textSmallerBtn, elements.textLargerBtn,
       elements.resetLayoutBtn, elements.includeMicrophone, elements.includeMediaAudio,
-      elements.micVolumeRange, elements.mediaVolumeRange, elements.activateMicBtn
+      elements.micVolumeRange, elements.mediaVolumeRange, elements.activateMicBtn,
+      elements.formatVertical, elements.formatHorizontal
     ].forEach((item) => { item.disabled = recording; });
     if (!recording) {
       displayImportedMedia();
@@ -1131,7 +1148,7 @@
     const audioParts = [];
     if (audioGraph.micIncluded) audioParts.push(`micro ${Math.round(microphoneVolume() * 100)} %`);
     if (audioGraph.mediaIncluded) audioParts.push(`vidéo ${Math.round(mediaVolume() * 100)} %`);
-    elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
+    elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${orientationLabel()} · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
     if (audioGraph.microphoneUnavailable) {
       showStatus(audioGraph.mediaIncluded
         ? 'Enregistrement lancé sans micro · son de la vidéo conservé'
@@ -1151,7 +1168,7 @@
       state.recordingStarting = false;
       if (!state.recorder || state.recorder.state === 'inactive') {
         elements.recBtn.disabled = false;
-        elements.recBtn.textContent = '● Enregistrer';
+        elements.recBtn.textContent = '● Filmer';
       }
     }
   }
@@ -1189,8 +1206,8 @@
     state.recordingName = `Grok_Teleprompteur_${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
     state.downloadUrl = URL.createObjectURL(state.recordingBlob);
     elements.download.style.display = 'block';
-    elements.download.textContent = 'Enregistrer la vidéo sur le téléphone';
-    elements.recordQuality.textContent = `${(state.recordingBlob.size / 1048576).toFixed(1)} Mo · prête à enregistrer`;
+    elements.download.textContent = '⬇ Télécharger la vidéo';
+    elements.recordQuality.textContent = `${(state.recordingBlob.size / 1048576).toFixed(1)} Mo · prête à télécharger`;
     await cleanupAfterRecording();
     showStatus('Vidéo prête · appuie sur le bouton vert');
   }
@@ -1214,7 +1231,7 @@
         const data = await blob.slice(offset, Math.min(offset + chunkSize, blob.size)).arrayBuffer();
         if (!bridge.writeChunk(session, bufferToBase64(data))) throw new Error('Écriture interrompue');
         const percent = Math.min(100, Math.round((offset + data.byteLength) / blob.size * 100));
-        elements.download.textContent = `Enregistrement… ${percent} %`;
+        elements.download.textContent = `Téléchargement… ${percent} %`;
         await delay(0);
       }
       if (!bridge.finishSave(session)) throw new Error('Finalisation impossible');
@@ -1230,7 +1247,7 @@
     try {
       if (window.AndroidBridge?.beginSave) {
         await saveWithAndroidBridge(state.recordingBlob, state.recordingName);
-        showStatus('Vidéo enregistrée dans Films/Grok Téléprompteur', false, 4500);
+        showStatus('Vidéo téléchargée dans Films/Grok Téléprompteur', false, 4500);
       } else {
         const anchor = document.createElement('a');
         anchor.href = state.downloadUrl;
@@ -1241,10 +1258,10 @@
         showStatus('Téléchargement lancé');
       }
     } catch (error) {
-      showStatus(`Échec de l’enregistrement : ${error.message}`, true, 5000);
+      showStatus(`Échec du téléchargement : ${error.message}`, true, 5000);
     } finally {
       elements.download.disabled = false;
-      elements.download.textContent = 'Enregistrer la vidéo sur le téléphone';
+      elements.download.textContent = '⬇ Télécharger la vidéo';
     }
   }
 
@@ -1253,6 +1270,7 @@
       localStorage.setItem('grokTeleprompterScript', elements.scriptInput.value);
       localStorage.setItem('grokTeleprompterAudio', elements.audioMode.value);
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
+      localStorage.setItem('grokTeleprompterOrientation', selectedOrientation());
       localStorage.setItem('grokTeleprompterSpeed', elements.speedRange.value);
       localStorage.setItem('grokTeleprompterSize', elements.sizeRange.value);
       localStorage.setItem('grokTeleprompterMixer', JSON.stringify({
@@ -1286,6 +1304,7 @@
       const script = localStorage.getItem('grokTeleprompterScript');
       const audio = localStorage.getItem('grokTeleprompterAudio');
       const quality = localStorage.getItem('grokTeleprompterQuality');
+      const orientation = localStorage.getItem('grokTeleprompterOrientation');
       const speed = localStorage.getItem('grokTeleprompterSpeed');
       const size = localStorage.getItem('grokTeleprompterSize');
       const layout = JSON.parse(localStorage.getItem('grokTeleprompterLayout') || 'null');
@@ -1293,6 +1312,8 @@
       if (script !== null) elements.scriptInput.value = script;
       if (audio && AUDIO_PROFILES[audio]) elements.audioMode.value = audio;
       if (quality === '720' || quality === '1080') elements.videoQuality.value = quality;
+      elements.formatHorizontal.checked = orientation === 'horizontal';
+      elements.formatVertical.checked = orientation !== 'horizontal';
       if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
       if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
       if (mixer) {
@@ -1397,6 +1418,20 @@
     saveScript();
     if (hasLiveCamera()) await startCamera();
   });
+  [elements.formatVertical, elements.formatHorizontal].forEach((input) => input.addEventListener('change', async (event) => {
+    if (!event.target.checked || (state.recorder && state.recorder.state !== 'inactive')) return;
+    try { window.AndroidBridge?.setCaptureOrientation?.(selectedOrientation()); } catch (_) {}
+    resetMediaView();
+    adaptFaceToOrientation();
+    resizeStage();
+    updateTeleText(true);
+    saveScript();
+    showStatus(`Format ${orientationLabel()} sélectionné`);
+    if (hasLiveCamera()) {
+      await delay(260);
+      await startCamera();
+    }
+  }));
   elements.scriptInput.addEventListener('input', () => {
     updateTeleText(false);
     clearTimeout(elements.scriptInput._saveTimer);
@@ -1699,6 +1734,7 @@
   });
 
   restorePreferences();
+  try { window.AndroidBridge?.setCaptureOrientation?.(selectedOrientation()); } catch (_) {}
   setAspect(9, 16);
   updateTabs();
   resizeStage();

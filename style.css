@@ -77,6 +77,17 @@ body[data-mode="facecam"] .faceFrame { z-index: 50; }
 body:not([data-mode="facecam"]) .gestureHelp span:first-child { display: none; }
 body[data-mode="media"] .gestureHelp, body[data-mode="media"] .teleControls { display: none; }
 
+.formatPicker { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #0b1430; }
+.formatTitle { margin-bottom: 8px; color: #dbeafe; font-size: 13px; font-weight: 900; text-align: center; }
+.formatChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.formatChoice { position: relative; min-width: 0; }
+.formatChoice input { position: absolute; opacity: 0; pointer-events: none; }
+.formatChoice span { display: grid; min-height: 49px; padding: 7px; place-items: center; border: 2px solid rgba(255,255,255,.14); border-radius: 12px; background: #1e293b; color: #cbd5e1; font-size: 13px; font-weight: 900; text-align: center; }
+.formatChoice span strong { color: inherit; }
+.formatChoice input:checked + span { border-color: #60a5fa; background: linear-gradient(135deg,#1d4ed8,#6d28d9); color: #fff; box-shadow: 0 0 0 2px rgba(96,165,250,.16); }
+.formatChoice input:focus-visible + span { outline: 3px solid #93c5fd; outline-offset: 2px; }
+.formatChoice input:disabled + span { opacity: .4; }
+
 .recordBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid rgba(255,255,255,.06); }
 .timer { width: max-content; padding: 8px 12px; border-radius: 10px; background: rgba(239,68,68,.16); color: #ff5b68; font-family: monospace; font-weight: 900; font-size: 20px; }
 .recordQuality { padding-top: 4px; color: #94a3b8; font-size: 11px; font-weight: 700; }
@@ -153,7 +164,7 @@ textarea { width: calc(100% - 24px); min-height: 130px; margin: 7px 12px 0; padd
 .status { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; z-index: 100; display: none; max-width: calc(100% - 24px); padding: 10px 16px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.16); border-radius: 999px; background: #0f172a; font-weight: 900; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hide { display: none !important; }
 
-body.recording .top, body.recording .controls, body.recording .settings, body.recording .audioMixer, body.recording textarea { opacity: .62; pointer-events: none; }
+body.recording .top, body.recording .controls, body.recording .settings, body.recording .audioMixer, body.recording .formatPicker, body.recording textarea { opacity: .62; pointer-events: none; }
 body.recording .teleprompter { pointer-events: none; border-color: transparent; }
 body.recording .teleMoveHandle, body.recording .resizeHandle, body.recording .moveBadge { display: none; }
 

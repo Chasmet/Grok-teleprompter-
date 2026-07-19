@@ -1,6 +1,6 @@
-# Audit complet — Grok Téléprompteur Studio 2.6.0
+# Audit complet — Grok Téléprompteur Studio 2.7.0
 
-Date : 18 juillet 2026
+Date : 19 juillet 2026
 
 ## Résultat
 
@@ -8,7 +8,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 
 ## Défauts constatés et corrections
 
-| Zone | Défaut constaté | Gravité | Correction 2.6.0 |
+| Zone | Défaut constaté | Gravité | Correction 2.7.0 |
 |---|---|---:|---|
 | Caméra Android | Caméra et micro demandés dans un même appel, source fréquente de `NotReadableError` sur certains WebView | Critique | Ouverture vidéo seule, puis ouverture du micro séparée |
 | Caméra Android | Une seule stratégie de contraintes vidéo | Élevée | Replis progressifs 1080/720, contraintes simples et essais par périphérique |
@@ -16,6 +16,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Autorisations | Erreur brève et tronquée, sans solution durable | Élevée | Panneau d’aide persistant, bouton Réessayer et accès aux réglages Android |
 | Facecam | Déplacement à un doigt seulement, sans redimensionnement tactile | Élevée | Glisser, pincer à deux doigts et poignée de redimensionnement |
 | Facecam | Position non mémorisée | Moyenne | Sauvegarde locale de la position et de la taille |
+| Format vidéo | Orientation imposée sans choix de l’utilisateur | Élevée | Sélecteur tactile vertical 9:16 / horizontal 16:9 pilotant l’aperçu, la caméra Android et les dimensions exactes du fichier final |
 | Téléprompteur | Cadre fixe, impossible à déplacer ou redimensionner | Élevée | Glisser, pincer, poignée et boutons haut/bas/taille |
 | Téléprompteur | Défilement lancé même si le texte tient dans le cadre | Élevée | Mesure réelle du contenu ; texte court centré et fixe |
 | Téléprompteur | Texte d’accueil visible sous le prompt | Élevée | Masquage systématique du texte d’accueil dès qu’un prompt est affiché |
@@ -34,6 +35,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Audio Android | Grésillement régulier aux frontières des trames de 10 ms | Critique | Retrait du `NoiseSuppressor` Android incompatible avec le traitement du constructeur, tout en conservant la source caméscope et la chaîne anti-saturation |
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
 | Cycle Android | Absence d’accès direct à la fiche de l’application | Moyenne | Pont natif vers les réglages de l’application |
+| Téléchargement | Action finale encore nommée « Enregistrer » | Faible | Bouton explicite « Télécharger la vidéo » et progression de téléchargement |
 
 ## Qualité audio
 
@@ -58,6 +60,7 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Continuité du flux natif | Inspection automatisée du tampon audio et de ses fondus anti-clics |
 | Mixeur audio | Test des interrupteurs et barres tactiles indépendantes |
 | Déplacement/redimensionnement facecam | Test de gestes pointeur |
+| Formats vertical/horizontal | Test du ratio de l’aperçu, de la persistance du choix et contrôle statique des dimensions 1080p |
 | Enregistrement et production d’un fichier | Test MediaRecorder + canvas |
 | Syntaxe JavaScript | `node --check` |
 | Projet Android | Android Lint + compilation APK |

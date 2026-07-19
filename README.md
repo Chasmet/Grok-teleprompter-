@@ -9,10 +9,11 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 
 ## Fonctions
 
-- Mode caméra live vertical.
+- Mode caméra live vertical ou horizontal.
 - Mode vidéo ou image importée.
 - Mode vidéo + facecam déplaçable et redimensionnable.
 - Facecam tactile : glisser, pincer ou tirer la poignée de redimensionnement.
+- Choix tactile du format final : vertical 9:16 ou horizontal 16:9, avec rotation Android correspondante.
 - Téléprompteur tactile : position et cadre réglables directement dans l’aperçu.
 - Texte court fixe ; défilement automatique uniquement lorsque le texte dépasse le cadre.
 - Sauvegarde automatique du texte sur le téléphone.
@@ -23,6 +24,7 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 - Mixeur tactile séparé : micro 0–200 % et son du média 0–100 %.
 - Micro prioritaire et son du média importé coupé par défaut.
 - Enregistrement toujours disponible : si le micro est occupé ou refusé, la vidéo démarre avec le son du média activé ou sans son.
+- Bouton final explicite « Télécharger la vidéo », avec sauvegarde dans Films/Grok Téléprompteur.
 - Écran maintenu allumé pendant l’enregistrement.
 
 ## Audio haute qualité
@@ -30,7 +32,7 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 Le mode `Voix studio`, activé par défaut, demande une capture 48 kHz et applique :
 
 - réduction du bruit et de l’écho ;
-- contrôle automatique du gain ;
+- gain maîtrisé sans amplification automatique forcée ;
 - filtre des graves parasites ;
 - amélioration légère de la présence vocale ;
 - compression douce et limiteur anti-saturation ;
@@ -66,7 +68,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.6.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.7.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 
