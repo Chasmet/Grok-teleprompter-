@@ -149,8 +149,9 @@ test('recording still starts when an enabled microphone is unavailable', async (
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
 });
 
-test('the Android native microphone takes over when WebView audio is unreadable', async ({ page }) => {
+test('the APK exclusively uses the Android camcorder microphone', async ({ page }) => {
   await page.evaluate(() => {
+    window.__webViewAudioRequests = 0;
     window.AndroidBridge = {
       startNativeMicrophone: () => 48000,
       stopNativeMicrophone: () => {},
@@ -159,6 +160,7 @@ test('the Android native microphone takes over when WebView audio is unreadable'
     const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getUserMedia = (constraints) => {
       if (constraints?.audio && !constraints?.video) {
+        window.__webViewAudioRequests += 1;
         return Promise.reject(new DOMException('WebView ne peut pas lire le micro', 'NotReadableError'));
       }
       return original(constraints);
@@ -168,13 +170,14 @@ test('the Android native microphone takes over when WebView audio is unreadable'
   await page.locator('#mediaInput').setInputFiles('icon-512.png');
   await page.locator('#cameraBtn').click();
   await expect(page.locator('#cameraBtn')).toHaveText('Caméra activée', { timeout: 15_000 });
-  await expect(page.locator('#audioLabel')).toContainText('micro téléphone direct');
+  await expect(page.locator('#audioLabel')).toContainText('micro caméra direct');
   await expect(page.locator('#audioLabel')).toContainText('48 kHz');
   await expect(page.locator('#microphoneHelp')).toBeHidden();
+  expect(await page.evaluate(() => window.__webViewAudioRequests)).toBe(0);
 
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
-  await expect(page.locator('#recordQuality')).toContainText('micro direct 48 kHz');
+  await expect(page.locator('#recordQuality')).toContainText('micro caméra 48 kHz');
   await page.waitForTimeout(500);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });

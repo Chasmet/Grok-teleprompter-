@@ -298,15 +298,19 @@ public final class MainActivity extends Activity {
         }
 
         /**
-         * Secours natif pour les WebView/OEM qui refusent getUserMedia(audio)
-         * alors que RECORD_AUDIO est bien accordée. Le PCM mono 16 bits est
-         * envoyé au graphe WebAudio de l'application par blocs courts.
+         * Source audio exclusive de l'APK : le preset CAMCORDER d'Android,
+         * identique à celui demandé lors d'un tournage vidéo. Aucun micro
+         * WebView, reconnaissance vocale ou source générique n'est utilisé.
          */
         @SuppressLint("MissingPermission")
         @JavascriptInterface
-        public int startNativeMicrophone(String profileName) {
+        public int startNativeMicrophone(String ignoredProfileName) {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                return 0;
+                runOnUiThread(() -> requestPermissions(
+                        new String[] { Manifest.permission.RECORD_AUDIO },
+                        RUNTIME_PERMISSION_REQUEST
+                ));
+                return -1;
             }
 
             synchronized (nativeMicrophoneLock) {
@@ -320,24 +324,10 @@ public final class MainActivity extends Activity {
                 if (minimum <= 0) return 0;
                 int bufferSize = Math.max(minimum * 4, NATIVE_MIC_CHUNK_BYTES * 4);
 
-                boolean musicProfile = "music".equals(profileName);
-                int[] sources = musicProfile
-                        ? new int[] {
-                                MediaRecorder.AudioSource.UNPROCESSED,
-                                MediaRecorder.AudioSource.MIC,
-                                MediaRecorder.AudioSource.CAMCORDER
-                        }
-                        : new int[] {
-                                MediaRecorder.AudioSource.UNPROCESSED,
-                                MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                                MediaRecorder.AudioSource.MIC,
-                                MediaRecorder.AudioSource.CAMCORDER
-                        };
-                AudioRecord recorder = null;
-                for (int source : sources) {
-                    recorder = createAudioRecord(source, bufferSize);
-                    if (recorder != null) break;
-                }
+                AudioRecord recorder = createAudioRecord(
+                        MediaRecorder.AudioSource.CAMCORDER,
+                        bufferSize
+                );
                 if (recorder == null) return 0;
 
                 try {
