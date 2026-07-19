@@ -6,7 +6,6 @@ import android.app.Activity;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Intent;
-import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.media.AudioFormat;
@@ -296,15 +295,6 @@ public final class MainActivity extends Activity {
             });
         }
 
-        @JavascriptInterface
-        public void setCaptureOrientation(String orientation) {
-            runOnUiThread(() -> setRequestedOrientation(
-                    "horizontal".equals(orientation)
-                            ? ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-                            : ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-            ));
-        }
-
         /**
          * Secours natif pour les WebView/OEM qui refusent getUserMedia(audio)
          * alors que RECORD_AUDIO est bien accordée. Le PCM mono 16 bits est
@@ -332,13 +322,14 @@ public final class MainActivity extends Activity {
                 int[] sources = musicProfile
                         ? new int[] {
                                 MediaRecorder.AudioSource.UNPROCESSED,
-                                MediaRecorder.AudioSource.CAMCORDER,
-                                MediaRecorder.AudioSource.MIC
+                                MediaRecorder.AudioSource.MIC,
+                                MediaRecorder.AudioSource.CAMCORDER
                         }
                         : new int[] {
-                                MediaRecorder.AudioSource.CAMCORDER,
+                                MediaRecorder.AudioSource.UNPROCESSED,
                                 MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                                MediaRecorder.AudioSource.MIC
+                                MediaRecorder.AudioSource.MIC,
+                                MediaRecorder.AudioSource.CAMCORDER
                         };
                 AudioRecord recorder = null;
                 for (int source : sources) {
@@ -402,7 +393,7 @@ public final class MainActivity extends Activity {
                                 count == pcm.length ? pcm : java.util.Arrays.copyOf(pcm, count),
                                 Base64.NO_WRAP
                         );
-                        dispatchNativeAudio(encoded);
+                        dispatchNativeAudio(encoded, calculatePcmRms(pcm, count));
                     } else if (count < 0 && nativeMicrophoneRunning && nativeAudioRecord == recorder) {
                         dispatchNativeAudioError("Lecture du micro natif interrompue");
                         break;
@@ -429,13 +420,24 @@ public final class MainActivity extends Activity {
             }
         }
 
-        private void dispatchNativeAudio(String encoded) {
+        private double calculatePcmRms(byte[] pcm, int count) {
+            int sampleCount = count / 2;
+            if (sampleCount <= 0) return 0;
+            long sumSquares = 0;
+            for (int index = 0; index + 1 < count; index += 2) {
+                short sample = (short) ((pcm[index] & 0xff) | (pcm[index + 1] << 8));
+                sumSquares += (long) sample * sample;
+            }
+            return Math.min(1, Math.sqrt((double) sumSquares / sampleCount) / 32768.0);
+        }
+
+        private void dispatchNativeAudio(String encoded, double rms) {
             WebView target = webView;
             if (target == null) return;
             target.post(() -> {
                 if (webView != null) {
                     webView.evaluateJavascript(
-                            "window.GrokNativeAudio&&window.GrokNativeAudio.push('" + encoded + "',48000)",
+                            "window.GrokNativeAudio&&window.GrokNativeAudio.push('" + encoded + "',48000," + Double.toString(rms) + ")",
                             null
                     );
                 }

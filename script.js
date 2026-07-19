@@ -16,7 +16,7 @@
     mediaVolumeRange: $('mediaVolumeRange'), micVolumeValue: $('micVolumeValue'),
     mediaVolumeValue: $('mediaVolumeValue'), microphoneToggleLabel: $('microphoneToggleLabel'),
     mediaAudioToggleLabel: $('mediaAudioToggleLabel'), activateMicBtn: $('activateMicBtn'),
-    formatVertical: $('formatVertical'), formatHorizontal: $('formatHorizontal'),
+    faceFormatVertical: $('faceFormatVertical'), faceFormatHorizontal: $('faceFormatHorizontal'),
     microphoneHelp: $('microphoneHelp'), microphoneHelpText: $('microphoneHelpText'),
     retryMicrophoneBtn: $('retryMicrophoneBtn'), microphoneSettingsBtn: $('microphoneSettingsBtn'),
     audioMeter: $('audioMeter'),
@@ -67,8 +67,7 @@
   const wantsMicrophone = () => elements.includeMicrophone.checked;
   const microphoneVolume = () => clamp(Number(elements.micVolumeRange.value) || 0, 0, 200) / 100;
   const mediaVolume = () => clamp(Number(elements.mediaVolumeRange.value) || 0, 0, 100) / 100;
-  const selectedOrientation = () => elements.formatHorizontal.checked ? 'horizontal' : 'vertical';
-  const orientationLabel = () => selectedOrientation() === 'horizontal' ? 'Horizontal 16:9' : 'Vertical 9:16';
+  const selectedFaceOrientation = () => elements.faceFormatHorizontal.checked ? 'horizontal' : 'vertical';
   const liveTracks = (stream, kind) => stream?.getTracks().filter((track) => track.kind === kind && track.readyState === 'live') || [];
   const hasLiveCamera = () => liveTracks(state.cameraStream, 'video').length > 0;
   const hasLiveMicrophone = () => liveTracks(state.micOnlyStream, 'audio').length > 0;
@@ -81,18 +80,16 @@
       channelCount: { ideal: profile.channels },
       echoCancellation: { ideal: profile.echoCancellation },
       noiseSuppression: { ideal: profile.noiseSuppression },
-      autoGainControl: { ideal: profile.autoGainControl },
-      latency: { ideal: .01 }
+      autoGainControl: { ideal: profile.autoGainControl }
     };
   }
 
   function videoConstraints() {
     const high = elements.videoQuality.value === '1080';
-    const horizontal = selectedOrientation() === 'horizontal';
     return {
       facingMode: { ideal: state.facingMode },
-      width: { ideal: high ? (horizontal ? 1920 : 1080) : (horizontal ? 1280 : 720) },
-      height: { ideal: high ? (horizontal ? 1080 : 1920) : (horizontal ? 720 : 1280) },
+      width: { ideal: high ? 1920 : 1280 },
+      height: { ideal: high ? 1080 : 720 },
       frameRate: { ideal: 30, max: 30 }
     };
   }
@@ -167,7 +164,7 @@
       elements.empty.classList.add('hide');
       elements.mediaVideo.classList.add('hide');
       elements.mediaImage.classList.add('hide');
-      resizeStage();
+      setAspect(9, 16);
     } else {
       displayImportedMedia();
     }
@@ -179,13 +176,11 @@
     state.mediaWidth = Math.max(1, Number(width) || 720);
     state.mediaHeight = Math.max(1, Number(height) || 1280);
     resizeStage();
+    applyFaceAspect();
   }
 
   function resizeStage() {
-    const orientation = selectedOrientation();
-    const ratio = orientation === 'horizontal' ? 16 / 9 : 9 / 16;
-    elements.stage.dataset.orientation = orientation;
-    document.body.dataset.orientation = orientation;
+    const ratio = state.mediaWidth / state.mediaHeight;
     const maxWidth = Math.max(120, elements.viewer.clientWidth - 20);
     const maxHeight = Math.max(120, elements.viewer.clientHeight - 20);
     let width = maxWidth;
@@ -228,18 +223,33 @@
 
   function resizeFace(delta) {
     state.face.w = clamp(state.face.w + delta, .14, .58);
-    state.face.h = clamp(state.face.h + delta * (selectedOrientation() === 'horizontal' ? 1 : .7), .10, .64);
-    state.face.x = clamp(state.face.x, 0, 1 - state.face.w);
-    state.face.y = clamp(state.face.y, 0, 1 - state.face.h);
-    layoutFace();
+    applyFaceAspect();
     saveScript();
   }
 
-  function adaptFaceToOrientation() {
-    const heightFactor = selectedOrientation() === 'horizontal' ? 1 : .7;
-    state.face.h = clamp(state.face.w * heightFactor, .10, .64);
-    state.face.x = clamp(state.face.x, 0, 1 - state.face.w);
-    state.face.y = clamp(state.face.y, 0, 1 - state.face.h);
+  function applyFaceAspect() {
+    const stageRatio = state.mediaWidth / state.mediaHeight;
+    const wantedRatio = selectedFaceOrientation() === 'horizontal' ? 16 / 9 : 9 / 16;
+    const centerX = state.face.x + state.face.w / 2;
+    const centerY = state.face.y + state.face.h / 2;
+    let width = clamp(state.face.w, .14, .78);
+    let height = width * stageRatio / wantedRatio;
+    if (height > .64) {
+      height = .64;
+      width = height * wantedRatio / stageRatio;
+    }
+    if (height < .10) {
+      height = .10;
+      width = height * wantedRatio / stageRatio;
+    }
+    if (width > .78) {
+      width = .78;
+      height = width * stageRatio / wantedRatio;
+    }
+    state.face.w = clamp(width, .10, .78);
+    state.face.h = clamp(height, .08, .64);
+    state.face.x = clamp(centerX - state.face.w / 2, 0, 1 - state.face.w);
+    state.face.y = clamp(centerY - state.face.h / 2, 0, 1 - state.face.h);
     layoutFace();
   }
 
@@ -426,13 +436,12 @@
 
   async function cameraConstraintAttempts() {
     const high = elements.videoQuality.value === '1080';
-    const horizontal = selectedOrientation() === 'horizontal';
     const attempts = [
       videoConstraints(),
       {
         facingMode: { ideal: state.facingMode },
-        width: { ideal: high ? (horizontal ? 1280 : 720) : (horizontal ? 960 : 540) },
-        height: { ideal: high ? (horizontal ? 720 : 1280) : (horizontal ? 540 : 960) },
+        width: { ideal: high ? 1280 : 960 },
+        height: { ideal: high ? 720 : 540 },
         frameRate: { ideal: 30, max: 30 }
       },
       { facingMode: { ideal: state.facingMode } },
@@ -640,7 +649,8 @@
       destination,
       worklet,
       sampleRate: 48000,
-      nextTime: 0
+      nextTime: 0,
+      lastMeterAt: 0
     };
     state.nativeMicrophone = native;
 
@@ -662,12 +672,18 @@
   }
 
   window.GrokNativeAudio = {
-    push(base64Pcm, sampleRate = 48000) {
+    push(base64Pcm, sampleRate = 48000, nativeRms = 0) {
       const native = state.nativeMicrophone;
       if (!native?.active || !base64Pcm) return;
       const context = native.context;
       if (!context || context.state === 'closed') return;
       if (context.state === 'suspended') context.resume().catch(() => {});
+
+      const now = performance.now();
+      if (!document.body.classList.contains('recording') && now - native.lastMeterAt >= 100) {
+        native.lastMeterAt = now;
+        displayMeterLevel(Number(nativeRms) || 0);
+      }
 
       try {
         const binary = atob(base64Pcm);
@@ -806,11 +822,7 @@
     compressor.release.value = .22;
     const gain = context.createGain();
     gain.gain.value = profile.gain * microphoneVolume();
-    const analyser = context.createAnalyser();
-    analyser.fftSize = 512;
-    analyser.smoothingTimeConstant = .78;
-    source.connect(highpass).connect(presence).connect(lowpass).connect(compressor).connect(gain).connect(analyser).connect(master);
-    return analyser;
+    source.connect(highpass).connect(presence).connect(lowpass).connect(compressor).connect(gain).connect(master);
   }
 
   function captureMediaAudio() {
@@ -866,8 +878,7 @@
     const safetyGain = context.createGain();
     safetyGain.gain.value = .74;
     limiter.connect(safetyGain).connect(destination);
-    let analyser = null;
-    if (micStream) analyser = connectVoicePipeline(context, micStream, limiter);
+    if (micStream) connectVoicePipeline(context, micStream, limiter);
     if (mediaAudio) {
       const mediaSource = context.createMediaStreamSource(mediaAudio);
       const mediaGain = context.createGain();
@@ -877,15 +888,21 @@
     return {
       stream: destination.stream,
       context,
-      analyser,
+      analyser: null,
       micIncluded: Boolean(micStream),
       mediaIncluded: Boolean(mediaAudio),
       microphoneUnavailable
     };
   }
 
+  function displayMeterLevel(rms) {
+    const db = rms > 0 ? 20 * Math.log10(rms) : -60;
+    elements.audioMeter.value = clamp((db + 55) / 50, 0, 1);
+    elements.audioPeak.textContent = `${Math.round(Math.max(-60, db))} dB`;
+  }
+
   function meterLoop(analyser) {
-    cancelAnimationFrame(state.audioMeterId);
+    clearTimeout(state.audioMeterId);
     if (!analyser) return;
     const values = new Uint8Array(analyser.fftSize);
     const update = () => {
@@ -896,16 +913,14 @@
         sum += normalized * normalized;
       }
       const rms = Math.sqrt(sum / values.length);
-      const db = rms > 0 ? 20 * Math.log10(rms) : -60;
-      elements.audioMeter.value = clamp((db + 55) / 50, 0, 1);
-      elements.audioPeak.textContent = `${Math.round(Math.max(-60, db))} dB`;
-      state.audioMeterId = requestAnimationFrame(update);
+      displayMeterLevel(rms);
+      state.audioMeterId = window.setTimeout(update, 100);
     };
     update();
   }
 
   function stopLiveMeter() {
-    cancelAnimationFrame(state.audioMeterId);
+    clearTimeout(state.audioMeterId);
     state.audioMeterId = 0;
     if (state.audioGraph?.context) state.audioGraph.context.close().catch(() => {});
     state.audioGraph = null;
@@ -915,6 +930,10 @@
 
   function startLiveMeter(stream) {
     stopLiveMeter();
+    if (state.nativeMicrophone?.active && stream === state.micOnlyStream) {
+      elements.audioPeak.textContent = '— dB';
+      return;
+    }
     const context = createContext();
     if (!context || !stream?.getAudioTracks().length) return;
     const analyser = context.createAnalyser();
@@ -991,11 +1010,12 @@
   }
 
   function outputSize() {
-    const high = elements.videoQuality.value === '1080';
-    if (selectedOrientation() === 'horizontal') {
-      return high ? { width: 1920, height: 1080 } : { width: 1280, height: 720 };
-    }
-    return high ? { width: 1080, height: 1920 } : { width: 720, height: 1280 };
+    const sourceWidth = state.mode === 'live' ? 1080 : state.mediaWidth;
+    const sourceHeight = state.mode === 'live' ? 1920 : state.mediaHeight;
+    const maxEdge = elements.videoQuality.value === '1080' ? 1920 : 1280;
+    const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
+    const makeEven = (value) => Math.max(2, Math.round(value * scale / 2) * 2);
+    return { width: makeEven(sourceWidth), height: makeEven(sourceHeight) };
   }
 
   function recorderMimeTypes(hasAudio) {
@@ -1058,7 +1078,7 @@
       elements.textDownBtn, elements.textSmallerBtn, elements.textLargerBtn,
       elements.resetLayoutBtn, elements.includeMicrophone, elements.includeMediaAudio,
       elements.micVolumeRange, elements.mediaVolumeRange, elements.activateMicBtn,
-      elements.formatVertical, elements.formatHorizontal
+      elements.faceFormatVertical, elements.faceFormatHorizontal
     ].forEach((item) => { item.disabled = recording; });
     if (!recording) {
       displayImportedMedia();
@@ -1112,18 +1132,14 @@
       showMicrophoneHelp(state.micLastError || new DOMException('Microphone indisponible', 'NotReadableError'));
     }
     state.audioGraph = audioGraph;
-    meterLoop(audioGraph.analyser);
 
     const size = outputSize();
     const canvas = document.createElement('canvas');
     canvas.width = size.width;
     canvas.height = size.height;
     const context = canvas.getContext('2d', { alpha: false, desynchronized: true });
-    const render = () => {
-      drawFrame(context, canvas);
-      state.renderId = requestAnimationFrame(render);
-    };
-    render();
+    drawFrame(context, canvas);
+    state.renderId = window.setInterval(() => drawFrame(context, canvas), 1000 / 30);
     const outputStream = canvas.captureStream(30);
     audioGraph.stream.getAudioTracks().forEach((track) => outputStream.addTrack(track));
 
@@ -1142,13 +1158,15 @@
     state.startedAt = Date.now();
     state.timerId = window.setInterval(updateTimer, 400);
     setRecordingUi(true);
+    elements.audioMeter.value = 0;
+    elements.audioPeak.textContent = 'REC';
     startTeleprompter();
     requestWakeLock();
     const profile = selectedProfile();
     const audioParts = [];
     if (audioGraph.micIncluded) audioParts.push(`micro ${Math.round(microphoneVolume() * 100)} %`);
     if (audioGraph.mediaIncluded) audioParts.push(`vidéo ${Math.round(mediaVolume() * 100)} %`);
-    elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${orientationLabel()} · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
+    elements.recordQuality.textContent = `${Math.min(size.width, size.height)}p · ${profile.label} · ${audioParts.join(' + ') || 'sans son'}`;
     if (audioGraph.microphoneUnavailable) {
       showStatus(audioGraph.mediaIncluded
         ? 'Enregistrement lancé sans micro · son de la vidéo conservé'
@@ -1181,14 +1199,14 @@
   }
 
   async function cleanupAfterRecording() {
-    if (state.renderId) cancelAnimationFrame(state.renderId);
+    if (state.renderId) clearInterval(state.renderId);
     state.renderId = 0;
     clearInterval(state.timerId);
     state.timerId = 0;
     elements.timer.textContent = '00:00';
     stopTeleprompter(true);
     if (state.mediaType === 'video') elements.mediaVideo.pause();
-    cancelAnimationFrame(state.audioMeterId);
+    clearTimeout(state.audioMeterId);
     state.audioMeterId = 0;
     if (state.audioGraph?.context) await state.audioGraph.context.close().catch(() => {});
     state.audioGraph = null;
@@ -1270,7 +1288,7 @@
       localStorage.setItem('grokTeleprompterScript', elements.scriptInput.value);
       localStorage.setItem('grokTeleprompterAudio', elements.audioMode.value);
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
-      localStorage.setItem('grokTeleprompterOrientation', selectedOrientation());
+      localStorage.setItem('grokTeleprompterFaceOrientation', selectedFaceOrientation());
       localStorage.setItem('grokTeleprompterSpeed', elements.speedRange.value);
       localStorage.setItem('grokTeleprompterSize', elements.sizeRange.value);
       localStorage.setItem('grokTeleprompterMixer', JSON.stringify({
@@ -1304,7 +1322,7 @@
       const script = localStorage.getItem('grokTeleprompterScript');
       const audio = localStorage.getItem('grokTeleprompterAudio');
       const quality = localStorage.getItem('grokTeleprompterQuality');
-      const orientation = localStorage.getItem('grokTeleprompterOrientation');
+      const faceOrientation = localStorage.getItem('grokTeleprompterFaceOrientation');
       const speed = localStorage.getItem('grokTeleprompterSpeed');
       const size = localStorage.getItem('grokTeleprompterSize');
       const layout = JSON.parse(localStorage.getItem('grokTeleprompterLayout') || 'null');
@@ -1312,8 +1330,8 @@
       if (script !== null) elements.scriptInput.value = script;
       if (audio && AUDIO_PROFILES[audio]) elements.audioMode.value = audio;
       if (quality === '720' || quality === '1080') elements.videoQuality.value = quality;
-      elements.formatHorizontal.checked = orientation === 'horizontal';
-      elements.formatVertical.checked = orientation !== 'horizontal';
+      elements.faceFormatHorizontal.checked = faceOrientation === 'horizontal';
+      elements.faceFormatVertical.checked = faceOrientation !== 'horizontal';
       if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
       if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
       if (mixer) {
@@ -1418,19 +1436,13 @@
     saveScript();
     if (hasLiveCamera()) await startCamera();
   });
-  [elements.formatVertical, elements.formatHorizontal].forEach((input) => input.addEventListener('change', async (event) => {
+  [elements.faceFormatVertical, elements.faceFormatHorizontal].forEach((input) => input.addEventListener('change', (event) => {
     if (!event.target.checked || (state.recorder && state.recorder.state !== 'inactive')) return;
-    try { window.AndroidBridge?.setCaptureOrientation?.(selectedOrientation()); } catch (_) {}
-    resetMediaView();
-    adaptFaceToOrientation();
-    resizeStage();
-    updateTeleText(true);
+    applyFaceAspect();
     saveScript();
-    showStatus(`Format ${orientationLabel()} sélectionné`);
-    if (hasLiveCamera()) {
-      await delay(260);
-      await startCamera();
-    }
+    showStatus(selectedFaceOrientation() === 'horizontal'
+      ? 'Webcam paysage 16:9 sélectionnée'
+      : 'Webcam verticale 9:16 sélectionnée');
   }));
   elements.scriptInput.addEventListener('input', () => {
     updateTeleText(false);
@@ -1734,7 +1746,6 @@
   });
 
   restorePreferences();
-  try { window.AndroidBridge?.setCaptureOrientation?.(selectedOrientation()); } catch (_) {}
   setAspect(9, 16);
   updateTabs();
   resizeStage();

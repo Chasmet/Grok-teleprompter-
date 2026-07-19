@@ -9,11 +9,11 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 
 ## Fonctions
 
-- Mode caméra live vertical ou horizontal.
+- Mode caméra live vertical ; les vidéos et images importées conservent automatiquement leur propre format.
 - Mode vidéo ou image importée.
 - Mode vidéo + facecam déplaçable et redimensionnable.
 - Facecam tactile : glisser, pincer ou tirer la poignée de redimensionnement.
-- Choix tactile du format final : vertical 9:16 ou horizontal 16:9, avec rotation Android correspondante.
+- Orientation de la fenêtre facecam au choix : verticale 9:16 ou paysage 16:9, sans modifier la vidéo de fond ni le fichier final.
 - Téléprompteur tactile : position et cadre réglables directement dans l’aperçu.
 - Texte court fixe ; défilement automatique uniquement lorsque le texte dépasse le cadre.
 - Sauvegarde automatique du texte sur le téléphone.
@@ -40,7 +40,7 @@ Le mode `Voix studio`, activé par défaut, demande une capture 48 kHz et appliq
 
 Deux autres profils sont disponibles : `Voix naturelle` et `Musique / chant`. Les paramètres réellement acceptés peuvent varier selon le micro et la version Android.
 
-Le bouton `Activer / tester le micro` et le VU-mètre permettent de confirmer la présence de la voix avant de filmer. Le son de la vidéo importée possède son propre interrupteur et son propre volume d’enregistrement.
+Le bouton `Activer / tester le micro` et le VU-mètre permettent de confirmer la présence de la voix avant de filmer. Sur Android, la jauge lit le niveau RMS déjà calculé dans le flux natif, sans ouvrir une seconde chaîne audio. Elle est désactivée pendant le tournage afin de préserver la continuité du son. Le son de la vidéo importée possède son propre interrupteur et son propre volume d’enregistrement.
 
 ## APK Android
 
@@ -52,7 +52,8 @@ L’APK contient l’application web dans ses propres ressources et fonctionne s
 - des demandes caméra et micro séparées avec plusieurs niveaux de repli ;
 - un secours microphone Android natif mono 48 kHz si le moteur WebView refuse l’entrée audio ;
 - un tampon audio exécuté sur le thread sonore pour supprimer les clics et coupures entre blocs ;
-- la source caméscope du téléphone sans effet Android découpant la voix par trames ;
+- une jauge limitée à 10 mesures par seconde et un rendu vidéo limité à 30 images par seconde pour protéger le thread audio ;
+- la source micro brute `UNPROCESSED` en priorité, puis un repli voix sans traitement agressif ; la source caméscope n’est utilisée qu’en dernier recours ;
 - une aide persistante et un accès direct aux autorisations Android en cas d’échec ;
 - l’enregistrement par blocs des grosses vidéos, sans charger tout le fichier en mémoire native ;
 - la sauvegarde directe dans `Films/Grok Teleprompteur` via MediaStore.
@@ -68,7 +69,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.7.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.8.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 

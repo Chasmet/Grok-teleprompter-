@@ -48,26 +48,22 @@ test('image import and media controls remain coherent', async ({ page }) => {
   await expect(page.locator('#pauseBtn')).toBeDisabled();
 });
 
-test('the user chooses a vertical or horizontal final video', async ({ page }) => {
-  await expect(page.locator('#formatVertical')).toBeChecked();
-  await expect(page.locator('#stage')).toHaveAttribute('data-orientation', 'vertical');
-  let stage = await page.locator('#stage').boundingBox();
-  expect(stage.height).toBeGreaterThan(stage.width);
+test('imported media keeps its own format when the webcam orientation changes', async ({ page }) => {
+  await page.locator('#mediaInput').setInputFiles('icon-512.png');
+  await expect(page.locator('#faceFormatVertical')).toBeChecked();
+  const automaticStage = await page.locator('#stage').boundingBox();
+  expect(Math.abs(automaticStage.width - automaticStage.height)).toBeLessThan(3);
 
-  await page.locator('label.formatChoice').filter({ has: page.locator('#formatHorizontal') }).click();
-  await expect(page.locator('#formatHorizontal')).toBeChecked();
-  await expect(page.locator('#stage')).toHaveAttribute('data-orientation', 'horizontal');
-  stage = await page.locator('#stage').boundingBox();
-  expect(stage.width).toBeGreaterThan(stage.height);
+  await page.locator('label.formatChoice').filter({ has: page.locator('#faceFormatHorizontal') }).click();
+  await expect(page.locator('#faceFormatHorizontal')).toBeChecked();
+  const unchangedStage = await page.locator('#stage').boundingBox();
+  expect(Math.abs(unchangedStage.width - unchangedStage.height)).toBeLessThan(3);
 
   await page.reload();
-  await expect(page.locator('#formatHorizontal')).toBeChecked();
-  await expect(page.locator('#stage')).toHaveAttribute('data-orientation', 'horizontal');
+  await expect(page.locator('#faceFormatHorizontal')).toBeChecked();
 });
 
 test('camera, microphone, facecam gestures and recording work together', async ({ page }) => {
-  await page.locator('label.formatChoice').filter({ has: page.locator('#formatHorizontal') }).click();
-  await expect(page.locator('#formatHorizontal')).toBeChecked();
   await page.locator('#mediaInput').setInputFiles('icon-512.png');
   await expect(page.locator('#includeMicrophone')).toBeChecked();
   await expect(page.locator('#includeMediaAudio')).not.toBeChecked();
@@ -82,7 +78,12 @@ test('camera, microphone, facecam gestures and recording work together', async (
 
   const frame = page.locator('#faceFrame');
   await frame.scrollIntoViewIfNeeded();
+  const vertical = await frame.boundingBox();
+  expect(vertical.width / vertical.height).toBeLessThan(.65);
+  await page.locator('label.formatChoice').filter({ has: page.locator('#faceFormatHorizontal') }).click();
+  await expect(page.locator('#faceFormatHorizontal')).toBeChecked();
   const start = await frame.boundingBox();
+  expect(start.width / start.height).toBeGreaterThan(1.65);
   await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
   await page.mouse.down();
   await page.mouse.move(start.x + start.width / 2 + 24, start.y + start.height / 2 + 30, { steps: 4 });
@@ -109,7 +110,6 @@ test('camera, microphone, facecam gestures and recording work together', async (
   await page.locator('#liveTab').click();
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
-  await expect(page.locator('#recordQuality')).toContainText('Horizontal 16:9');
   await page.waitForTimeout(1200);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });

@@ -31,9 +31,13 @@ test('Android provides a clean native 48 kHz microphone when WebView capture fai
   assert.match(android, /new AudioRecord\.Builder\(\)/);
   assert.match(android, /startNativeMicrophone\(String profileName\)/);
   assert.match(android, /NATIVE_MIC_SAMPLE_RATE = 48000/);
+  assert.match(android, /MediaRecorder\.AudioSource\.UNPROCESSED[\s\S]*MediaRecorder\.AudioSource\.VOICE_RECOGNITION[\s\S]*MediaRecorder\.AudioSource\.MIC[\s\S]*MediaRecorder\.AudioSource\.CAMCORDER/);
   assert.match(android, /MediaRecorder\.AudioSource\.CAMCORDER/);
   assert.doesNotMatch(android, /NoiseSuppressor/);
+  assert.match(android, /calculatePcmRms\(pcm, count\)/);
+  assert.match(android, /dispatchNativeAudio\(String encoded, double rms\)/);
   assert.match(script, /window\.GrokNativeAudio/);
+  assert.match(script, /push\(base64Pcm, sampleRate = 48000, nativeRms = 0\)/);
   assert.match(script, /startNativeMicrophoneFallback/);
   assert.match(script, /new AudioWorkletNode\(context, 'grok-native-pcm'/);
   assert.match(nativeWorklet, /prebufferFrames/);
@@ -85,7 +89,7 @@ test('the native PCM worklet keeps adjacent Android chunks continuous', () => {
 });
 
 test('the tactile and short-text safeguards stay wired', () => {
-  for (const id of ['faceResizeHandle', 'teleResizeHandle', 'retryCameraBtn', 'cameraSettingsBtn', 'formatVertical', 'formatHorizontal']) {
+  for (const id of ['faceResizeHandle', 'teleResizeHandle', 'retryCameraBtn', 'cameraSettingsBtn', 'faceFormatVertical', 'faceFormatHorizontal']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
   assert.match(script, /textHeight > availableHeight/);
@@ -93,16 +97,22 @@ test('the tactile and short-text safeguards stay wired', () => {
   assert.match(script, /grokTeleprompterLayout/);
 });
 
-test('vertical and horizontal camera formats control preview, capture and Android orientation', () => {
-  assert.match(script, /Horizontal 16:9/);
-  assert.match(script, /Vertical 9:16/);
-  assert.match(script, /return high \? \{ width: 1920, height: 1080 \}/);
-  assert.match(script, /return high \? \{ width: 1080, height: 1920 \}/);
-  assert.match(script, /grokTeleprompterOrientation/);
-  assert.match(android, /setCaptureOrientation\(String orientation\)/);
-  assert.match(android, /SCREEN_ORIENTATION_SENSOR_LANDSCAPE/);
-  assert.match(android, /SCREEN_ORIENTATION_SENSOR_PORTRAIT/);
+test('imported media stays automatic and only the facecam gets a selectable aspect', () => {
+  assert.match(script, /const ratio = state\.mediaWidth \/ state\.mediaHeight/);
+  assert.match(script, /const sourceWidth = state\.mode === 'live' \? 1080 : state\.mediaWidth/);
+  assert.match(script, /const wantedRatio = selectedFaceOrientation\(\) === 'horizontal' \? 16 \/ 9 : 9 \/ 16/);
+  assert.match(script, /grokTeleprompterFaceOrientation/);
+  assert.doesNotMatch(android, /setCaptureOrientation/);
+  assert.match(html, /Orientation de la webcam/);
   assert.match(html, /⬇ Télécharger la vidéo/);
+});
+
+test('the sound meter cannot add a second audio path while recording', () => {
+  assert.match(script, /state\.nativeMicrophone\?\.active && stream === state\.micOnlyStream/);
+  assert.match(script, /native\.lastMeterAt >= 100/);
+  assert.match(script, /setInterval\(\(\) => drawFrame\(context, canvas\), 1000 \/ 30\)/);
+  assert.doesNotMatch(script, /meterLoop\(audioGraph\.analyser\)/);
+  assert.doesNotMatch(script, /connect\(gain\)\.connect\(analyser\)/);
 });
 
 test('recording falls back without a microphone and both audio sources have tactile gains', () => {
