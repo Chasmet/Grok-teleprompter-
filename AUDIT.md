@@ -1,4 +1,4 @@
-# Audit complet — Grok Téléprompteur Studio 2.7.0
+# Audit complet — Grok Téléprompteur Studio 2.8.0
 
 Date : 19 juillet 2026
 
@@ -8,7 +8,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 
 ## Défauts constatés et corrections
 
-| Zone | Défaut constaté | Gravité | Correction 2.7.0 |
+| Zone | Défaut constaté | Gravité | Correction 2.8.0 |
 |---|---|---:|---|
 | Caméra Android | Caméra et micro demandés dans un même appel, source fréquente de `NotReadableError` sur certains WebView | Critique | Ouverture vidéo seule, puis ouverture du micro séparée |
 | Caméra Android | Une seule stratégie de contraintes vidéo | Élevée | Replis progressifs 1080/720, contraintes simples et essais par périphérique |
@@ -16,7 +16,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Autorisations | Erreur brève et tronquée, sans solution durable | Élevée | Panneau d’aide persistant, bouton Réessayer et accès aux réglages Android |
 | Facecam | Déplacement à un doigt seulement, sans redimensionnement tactile | Élevée | Glisser, pincer à deux doigts et poignée de redimensionnement |
 | Facecam | Position non mémorisée | Moyenne | Sauvegarde locale de la position et de la taille |
-| Format vidéo | Orientation imposée sans choix de l’utilisateur | Élevée | Sélecteur tactile vertical 9:16 / horizontal 16:9 pilotant l’aperçu, la caméra Android et les dimensions exactes du fichier final |
+| Format vidéo | Le choix 9:16 / 16:9 avait été appliqué par erreur à toute la vidéo | Critique | Retour au format automatique du média importé ; le sélecteur agit uniquement sur la forme de la fenêtre webcam |
 | Téléprompteur | Cadre fixe, impossible à déplacer ou redimensionner | Élevée | Glisser, pincer, poignée et boutons haut/bas/taille |
 | Téléprompteur | Défilement lancé même si le texte tient dans le cadre | Élevée | Mesure réelle du contenu ; texte court centré et fixe |
 | Téléprompteur | Texte d’accueil visible sous le prompt | Élevée | Masquage systématique du texte d’accueil dès qu’un prompt est affiché |
@@ -31,15 +31,16 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Audio | Son importé trop présent par défaut | Élevée | Son de la vidéo coupé par défaut et micro réglé à 130 % |
 | Audio Android | Permissions accordées mais `NotReadableError` persistant dans certains WebView/OEM | Critique | Repli automatique vers `AudioRecord` Android natif, mono PCM 16 bits à 48 kHz, sans couper la caméra |
 | Audio Android | Raccords secs et clics entre les blocs PCM transmis par le pont natif | Critique | Tampon continu `AudioWorklet` avec précharge, lissages d’entrée/sortie et protection contre les retards |
-| Audio Android | Voix trop poussée, crêtes à 0 dB et traitement agressif dans l’enregistrement réel fourni | Critique | Source caméscope du téléphone, compression plus naturelle et marge de sécurité anti-saturation |
-| Audio Android | Grésillement régulier aux frontières des trames de 10 ms | Critique | Retrait du `NoiseSuppressor` Android incompatible avec le traitement du constructeur, tout en conservant la source caméscope et la chaîne anti-saturation |
+| Audio Android | Voix trop poussée, crêtes à 0 dB et traitement agressif dans l’enregistrement réel fourni | Critique | Gain ramené à un niveau naturel, compression plus douce et marge de sécurité anti-saturation |
+| Audio Android | Grésillement régulier aux frontières des trames de 10 ms | Critique | Retrait du `NoiseSuppressor` et priorité à la source brute `UNPROCESSED`, puis `VOICE_RECOGNITION` ; la source caméscope traitée par le constructeur devient le dernier recours |
+| Audio Android | La jauge ouvrait un second graphe audio et le canvas dessinait plus vite que les 30 i/s enregistrées | Critique | Niveau RMS calculé dans les blocs PCM natifs, jauge sans seconde chaîne et inactive pendant l’enregistrement ; composition verrouillée à 30 i/s |
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
 | Cycle Android | Absence d’accès direct à la fiche de l’application | Moyenne | Pont natif vers les réglages de l’application |
 | Téléchargement | Action finale encore nommée « Enregistrer » | Faible | Bouton explicite « Télécharger la vidéo » et progression de téléchargement |
 
 ## Qualité audio
 
-Le profil « Voix studio HD » demande une capture 48 kHz mono. Si WebView refuse cette capture malgré l’autorisation Android, l’application ouvre directement `AudioRecord` avec la source caméscope du téléphone puis transmet le PCM 16 bits à un tampon audio continu. Aucun effet `NoiseSuppressor` supplémentaire n’est attaché au flux natif : l’échantillon réel a montré que son traitement par trames de 10 ms provoquait le grésillement sur l’appareil testé. Le traitement WebAudio conserve un coupe-bas léger, une présence vocale modérée, une compression douce, un limiteur et une marge de sortie anti-saturation, avec un débit cible de 256 kb/s.
+Le profil « Voix studio HD » demande une capture 48 kHz mono. Si WebView refuse cette capture malgré l’autorisation Android, l’application ouvre directement `AudioRecord`, en priorité avec la source brute `UNPROCESSED`, puis `VOICE_RECOGNITION`, et transmet le PCM 16 bits à un tampon audio continu. La source `CAMCORDER` n’est plus qu’un dernier recours. Aucun effet `NoiseSuppressor` supplémentaire n’est attaché au flux natif : l’échantillon réel présente ses plus fortes discontinuités exactement toutes les 10 ms, signature d’un traitement audio Android découpé par trames. Le niveau de la jauge est calculé dans ces mêmes blocs et envoyé au maximum dix fois par seconde, sans dupliquer le flux audio. Pendant l’enregistrement, l’analyse de niveau est coupée et le canvas est cadencé à 30 i/s. Le traitement WebAudio conserve un coupe-bas léger, une présence vocale modérée, une compression douce, un limiteur et une marge de sortie anti-saturation, avec un débit cible de 256 kb/s.
 
 La qualité finale reste limitée par le microphone, les traitements réellement acceptés par le constructeur Android et le codec fourni par le WebView.
 
@@ -60,7 +61,9 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Continuité du flux natif | Inspection automatisée du tampon audio et de ses fondus anti-clics |
 | Mixeur audio | Test des interrupteurs et barres tactiles indépendantes |
 | Déplacement/redimensionnement facecam | Test de gestes pointeur |
-| Formats vertical/horizontal | Test du ratio de l’aperçu, de la persistance du choix et contrôle statique des dimensions 1080p |
+| Format automatique du média | Test confirmant que le cadre vidéo conserve le ratio du fichier importé |
+| Webcam verticale/horizontale | Test des ratios 9:16 et 16:9 de la seule fenêtre facecam et de la persistance du choix |
+| Jauge sans doublage audio | Contrôle statique de l’absence d’analyseur dans la chaîne d’enregistrement et du niveau natif direct |
 | Enregistrement et production d’un fichier | Test MediaRecorder + canvas |
 | Syntaxe JavaScript | `node --check` |
 | Projet Android | Android Lint + compilation APK |
