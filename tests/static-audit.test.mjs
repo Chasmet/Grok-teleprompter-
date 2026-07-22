@@ -195,3 +195,18 @@ test('recording falls back without a microphone and both audio sources have tact
   assert.match(script, /mediaGain\.gain\.value = mediaVolume\(\)/);
   assert.match(script, /state\.mode === 'live'.*includeMediaAudio\.checked/);
 });
+
+test('recording results, imported files and Android interruptions are protected', () => {
+  for (const id of ['resultActions', 'download', 'discardRecording', 'mediaInfo', 'mediaImportLabel']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(script, /state\.recordingBlob && !state\.recordingSaved/);
+  assert.match(script, /Télécharge ou supprime d’abord la prise précédente/);
+  assert.match(script, /function discardRecording\(\)/);
+  assert.match(script, /state\.stopRequested/);
+  assert.match(script, /stopRecording\('media-ended'\)/);
+  assert.match(script, /elements\.mediaVideo\.currentTime = 0/);
+  assert.match(script, /stopRecording\('background'\)/);
+  assert.match(script, /Codec vidéo non compatible avec ce téléphone/);
+  assert.match(script, /event\.target\.value = ''/);
+});

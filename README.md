@@ -21,11 +21,15 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 - Sauvegarde automatique des positions, tailles, vitesse et préférences.
 - Caméra avant ou arrière et miroir réglable.
 - Zoom et déplacement du média importé, reproduits dans l’export.
+- Informations claires sur le média importé et message utile si son codec est illisible.
+- Une vidéo importée repart du début et arrête automatiquement le tournage lorsqu’elle se termine.
 - Export 1080p haute qualité ou 720p fluide.
 - Mixeur tactile séparé : micro 0–200 % et son du média 0–100 %.
 - Micro prioritaire et son du média importé coupé par défaut.
 - Enregistrement toujours disponible : si le micro est occupé ou refusé, la vidéo démarre avec le son du média activé ou sans son.
 - Bouton final explicite « Télécharger la vidéo », avec sauvegarde dans Films/Grok Téléprompteur.
+- Protection d’une prise non téléchargée, avec action séparée « Refaire une prise ».
+- Arrêt propre et récupération de la vidéo si l’application passe en arrière-plan pendant le tournage.
 - Écran maintenu allumé pendant l’enregistrement.
 
 ## Audio haute qualité
@@ -73,7 +77,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.11.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.12.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 
