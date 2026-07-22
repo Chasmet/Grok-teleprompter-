@@ -65,10 +65,7 @@ test('imported media records a voice-over with a visible teleprompter and no cam
   await expect(page.locator('#cameraControls')).toBeHidden();
 
   const before = await prompt.boundingBox();
-  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 - 24, { steps: 4 });
-  await page.mouse.up();
+  await page.locator('#textDownBtn').click();
   const moved = await prompt.boundingBox();
   expect(Math.abs(moved.y - before.y)).toBeGreaterThan(10);
 
