@@ -75,7 +75,6 @@ body[data-mode="facecam"] .faceFrame { z-index: 50; }
 
 .gestureHelp { display: grid; gap: 3px; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.07); background: #081027; color: #9fb5d5; text-align: center; font-size: 10px; font-weight: 800; }
 body:not([data-mode="facecam"]) .gestureHelp span:first-child { display: none; }
-body[data-mode="media"] .gestureHelp, body[data-mode="media"] .teleControls { display: none; }
 
 .formatPicker { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #0b1430; }
 .formatTitle { margin-bottom: 8px; color: #dbeafe; font-size: 13px; font-weight: 900; text-align: center; }
@@ -120,6 +119,10 @@ body:not([data-mode="facecam"]) .formatPicker { display: none; }
 .row3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 10px 12px 0; }
 .row4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 8px 12px 0; }
 body:not([data-mode="facecam"]) .faceControls { display: none; }
+body[data-mode="media"] #mediaImportRow { grid-template-columns: 1fr; }
+body[data-mode="media"] #cameraBtn,
+body[data-mode="media"] #cameraHelp,
+body[data-mode="media"] #cameraControls { display: none; }
 .cameraHelp { margin: 10px 12px 0; padding: 12px; border: 1px solid rgba(248,113,113,.55); border-radius: 12px; background: rgba(127,29,29,.28); }
 .cameraHelp p { color: #fecaca; font-size: 13px; font-weight: 800; line-height: 1.4; }
 .cameraHelpActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }

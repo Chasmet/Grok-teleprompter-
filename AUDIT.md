@@ -1,6 +1,6 @@
-# Audit complet — Grok Téléprompteur Studio 2.10.0
+# Audit complet — Grok Téléprompteur Studio 2.11.0
 
-Date : 19 juillet 2026
+Date : 22 juillet 2026
 
 ## Résultat
 
@@ -8,7 +8,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 
 ## Défauts constatés et corrections
 
-| Zone | Défaut constaté | Gravité | Correction 2.10.0 |
+| Zone | Défaut constaté | Gravité | Correction livrée |
 |---|---|---:|---|
 | Caméra Android | Caméra et micro demandés dans un même appel, source fréquente de `NotReadableError` sur certains WebView | Critique | Ouverture vidéo seule, puis ouverture du micro séparée |
 | Caméra Android | Une seule stratégie de contraintes vidéo | Élevée | Replis progressifs 1080/720, contraintes simples et essais par périphérique |
@@ -21,6 +21,7 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Téléprompteur | Défilement lancé même si le texte tient dans le cadre | Élevée | Mesure réelle du contenu ; texte court centré et fixe |
 | Téléprompteur | Texte d’accueil visible sous le prompt | Élevée | Masquage systématique du texte d’accueil dès qu’un prompt est affiché |
 | Téléprompteur | Réglages perdus au redémarrage | Moyenne | Sauvegarde du cadre, de la taille, de la vitesse et du miroir |
+| Vidéo importée | Téléprompteur masqué, commandes cachées et défilement bloqué, empêchant la voix off guidée sans caméra | Critique | Téléprompteur visible, déplaçable et défilant pendant l’enregistrement ; caméra arrêtée et masquée ; texte volontairement absent du fichier exporté |
 | Audio | Changement de profil audio redémarrait aussi la caméra | Moyenne | Redémarrage du micro uniquement, sans interrompre l’image |
 | Audio | VU-mètre parfois relié au flux vidéo sans audio | Moyenne | Priorité explicite au flux microphone séparé |
 | Audio | Lors d’un échec micro, le son de la vidéo pouvait être utilisé sans explication | Critique | Avertissement explicite ; le choix Son vidéo ON/OFF reste respecté |
@@ -58,6 +59,7 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Prompt long avec défilement | Test Chromium mobile |
 | Déplacement/redimensionnement du prompt | Test de gestes pointeur |
 | Import d’image et états Lecture/Pause | Test Chromium mobile |
+| Voix off sur média importé | Test Chromium confirmant téléprompteur visible et défilant, commandes tactiles actives, caméra absente et export final disponible |
 | Ouverture caméra + micro | Test avec périphériques média simulés |
 | Refus du micro | Test confirmant le démarrage de la vidéo sans piste micro |
 | Échec micro WebView | Test confirmant le basculement vers le flux Android natif 48 kHz |

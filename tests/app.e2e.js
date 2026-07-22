@@ -48,6 +48,35 @@ test('image import and media controls remain coherent', async ({ page }) => {
   await expect(page.locator('#pauseBtn')).toBeDisabled();
 });
 
+test('imported media records a voice-over with a visible teleprompter and no camera', async ({ page }) => {
+  const prompt = page.locator('#teleprompter');
+  const longScript = Array(100).fill('Je lis mon texte pendant que la vidéo importée reste seule dans le fichier final.').join(' ');
+
+  await page.locator('#mediaInput').setInputFiles('icon-512.png');
+  await page.locator('#mediaTab').click();
+  await page.locator('#scriptInput').fill(longScript);
+
+  await expect(prompt).toBeVisible();
+  await expect(prompt).toHaveAttribute('data-scroll-mode', 'scroll');
+  await expect(page.locator('#teleControls')).toBeVisible();
+  await expect(page.locator('#teleScrollState')).toHaveText('Texte long : défilement automatique');
+  await expect(page.locator('#faceFrame')).toBeHidden();
+  await expect(page.locator('#cameraBtn')).toBeHidden();
+  await expect(page.locator('#cameraControls')).toBeHidden();
+
+  const before = await prompt.boundingBox();
+  await page.locator('#textDownBtn').click();
+  const moved = await prompt.boundingBox();
+  expect(Math.abs(moved.y - before.y)).toBeGreaterThan(10);
+
+  await page.locator('#recBtn').click();
+  await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  await expect(prompt).toBeVisible();
+  await page.waitForTimeout(700);
+  await page.locator('#stopBtn').click();
+  await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
+});
+
 test('imported media keeps its own format when the webcam orientation changes', async ({ page }) => {
   await page.locator('#mediaInput').setInputFiles('icon-512.png');
   await expect(page.locator('#faceFormatVertical')).toBeChecked();
