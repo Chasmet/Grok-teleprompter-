@@ -1,4 +1,4 @@
-# Audit complet — Grok Téléprompteur Studio 2.11.0
+# Audit complet — Grok Téléprompteur Studio 2.12.0
 
 Date : 22 juillet 2026
 
@@ -41,6 +41,11 @@ L’audit a porté sur l’interface mobile, le cycle caméra/micro du WebView A
 | Commandes | Lecture/Pause et caméra secondaire actives sans source valable | Moyenne | États désactivés synchronisés avec la disponibilité réelle |
 | Cycle Android | Absence d’accès direct à la fiche de l’application | Moyenne | Pont natif vers les réglages de l’application |
 | Téléchargement | Action finale encore nommée « Enregistrer » | Faible | Bouton explicite « Télécharger la vidéo » et progression de téléchargement |
+| Prise terminée | Une nouvelle prise pouvait remplacer une vidéo pas encore téléchargée | Critique | Blocage protecteur et action explicite « Refaire une prise » avec confirmation |
+| Arrêt | Plusieurs appuis sur Stop pouvaient demander plusieurs finalisations au même enregistreur | Élevée | Verrou de finalisation, bouton désactivé immédiatement et état visible |
+| Cycle Android | Le passage en arrière-plan pouvait laisser continuer une prise sans micro natif | Critique | Arrêt immédiat et finalisation propre dès que l’application quitte l’écran |
+| Vidéo importée | Le tournage continuait après la fin du média et pouvait démarrer au milieu après une prévisualisation | Élevée | Retour automatique au début et arrêt du tournage à la dernière image |
+| Import | Un codec illisible ou la sélection répétée du même fichier donnait peu de retour | Moyenne | Erreur claire, nettoyage du média invalide, nom/dimensions/durée visibles et même fichier sélectionnable à nouveau |
 
 ## Qualité audio
 
@@ -75,6 +80,10 @@ La qualité finale reste limitée par le microphone, les traitements réellement
 | Enregistrement et production d’un fichier | Test MediaRecorder + canvas |
 | Syntaxe JavaScript | `node --check` |
 | Projet Android | Android Lint + compilation APK |
+| Protection de la prise | Test mobile confirmant le blocage avant téléchargement et la suppression volontaire |
+| Finalisation unique | Audit du verrou anti-double Stop et des interruptions Android |
+| Fin du média | Audit du retour au début et de l’arrêt automatique de la prise |
+| Import invalide | Audit des erreurs codec, du nettoyage et de la sélection répétée |
 
 ## Validation matérielle recommandée
 

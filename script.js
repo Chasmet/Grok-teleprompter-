@@ -5,8 +5,10 @@
   const elements = {
     stage: $('stage'), viewer: $('viewer'), empty: $('empty'), mediaVideo: $('mediaVideo'),
     mediaImage: $('mediaImage'), cameraVideo: $('cameraVideo'), faceFrame: $('faceFrame'),
-    faceResizeHandle: $('faceResizeHandle'), mediaInput: $('mediaInput'),
-    download: $('download'), status: $('status'), timer: $('timer'), teleprompter: $('teleprompter'),
+    faceResizeHandle: $('faceResizeHandle'), mediaInput: $('mediaInput'), mediaInfo: $('mediaInfo'),
+    mediaImportLabel: $('mediaImportLabel'), resultActions: $('resultActions'),
+    download: $('download'), discardRecording: $('discardRecording'), status: $('status'),
+    timer: $('timer'), teleprompter: $('teleprompter'),
     teleText: $('teleText'), scriptInput: $('scriptInput'), speedRange: $('speedRange'),
     sizeRange: $('sizeRange'), liveTab: $('liveTab'), mediaTab: $('mediaTab'), faceTab: $('faceTab'),
     recBtn: $('recBtn'), stopBtn: $('stopBtn'), cameraBtn: $('cameraBtn'), flipBtn: $('flipBtn'),
@@ -32,12 +34,12 @@
   const DEFAULT_TELE_BOX = { x: .05, y: .09, w: .90, h: .72 };
 
   const state = {
-    mode: 'facecam', mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '',
+    mode: 'facecam', mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '', mediaName: '',
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
     nativeMicrophone: null,
-    recordingStarting: false,
+    recordingStarting: false, stopRequested: false, stopReason: '', recordingSaved: true,
     facingMode: 'user', mirrored: true,
     face: { ...DEFAULT_FACE }, facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
@@ -305,7 +307,43 @@
     elements.mediaVideo.classList.toggle('hide', state.mediaType !== 'video');
     elements.playBtn.disabled = state.mediaType !== 'video';
     elements.pauseBtn.disabled = state.mediaType !== 'video';
+    elements.mediaImportLabel.textContent = state.mediaType ? 'Changer le média' : 'Importer un média';
     updateEmptyVisibility();
+  }
+
+  function formatDuration(seconds) {
+    if (!Number.isFinite(seconds) || seconds <= 0) return '';
+    const rounded = Math.round(seconds);
+    return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, '0')}`;
+  }
+
+  function updateMediaInfo(duration = 0) {
+    if (!state.mediaType) {
+      elements.mediaInfo.textContent = 'Aucun média importé';
+      return;
+    }
+    const type = state.mediaType === 'video' ? 'Vidéo' : 'Image';
+    const dimensions = `${state.mediaWidth} × ${state.mediaHeight}`;
+    const formattedDuration = state.mediaType === 'video' ? formatDuration(duration) : '';
+    elements.mediaInfo.textContent = [type, state.mediaName, dimensions, formattedDuration]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
+  function clearRecordingResult() {
+    if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
+    state.downloadUrl = '';
+    state.recordingBlob = null;
+    state.recordingName = '';
+    state.recordingSaved = true;
+    elements.resultActions.classList.remove('ready');
+    elements.download.classList.remove('saved');
+    elements.download.textContent = '⬇ Télécharger la vidéo';
+  }
+
+  function showRecordingResult() {
+    elements.resultActions.classList.add('ready');
+    elements.download.classList.toggle('saved', state.recordingSaved);
   }
 
   function updateEmptyVisibility() {
@@ -1186,6 +1224,11 @@
 
   async function startRecording() {
     if (state.recordingStarting || (state.recorder && state.recorder.state !== 'inactive')) return;
+    if (state.recordingBlob && !state.recordingSaved) {
+      showStatus('Télécharge ou supprime d’abord la prise précédente', true, 4800);
+      elements.resultActions.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
       showStatus('Enregistrement non compatible avec ce navigateur', true, 5000);
       return;
@@ -1201,14 +1244,17 @@
 
     try {
     state.chunks = [];
-    state.recordingBlob = null;
-    elements.download.style.display = 'none';
-    if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl);
-    state.downloadUrl = '';
+    clearRecordingResult();
+    state.stopRequested = false;
+    state.stopReason = '';
 
     state.nativeMicrophone?.context?.resume().catch(() => {});
 
-    if (state.mediaType === 'video' && state.mode !== 'live') await elements.mediaVideo.play().catch(() => {});
+    const usesImportedVideo = state.mediaType === 'video' && state.mode !== 'live';
+    if (usesImportedVideo) {
+      try { elements.mediaVideo.currentTime = 0; } catch (_) {}
+      await elements.mediaVideo.play().catch(() => {});
+    }
     stopLiveMeter();
     let audioGraph;
     try {
@@ -1224,6 +1270,14 @@
       showMicrophoneHelp(state.micLastError || new DOMException('Microphone indisponible', 'NotReadableError'));
     }
     state.audioGraph = audioGraph;
+
+    // La lecture préalable permet à captureStream d’exposer sa piste audio.
+    // On revient ensuite exactement à la première image avant de démarrer
+    // l’encodeur afin de ne perdre aucune seconde pendant la préparation.
+    if (usesImportedVideo) {
+      elements.mediaVideo.pause();
+      try { elements.mediaVideo.currentTime = 0; } catch (_) {}
+    }
 
     const size = outputSize();
     const canvas = document.createElement('canvas');
@@ -1241,7 +1295,12 @@
       state.recorder.onerror = (event) => showStatus(`Erreur d’enregistrement : ${event.error?.name || 'inconnue'}`, true, 5000);
       state.recorder.onstop = finishRecording;
       state.recorder.start(1000);
+      if (usesImportedVideo) await elements.mediaVideo.play();
     } catch (error) {
+      if (state.recorder && state.recorder.state !== 'inactive') {
+        state.recorder.onstop = null;
+        try { state.recorder.stop(); } catch (_) {}
+      }
       await cleanupAfterRecording();
       showStatus(error.message, true, 5000);
       return;
@@ -1287,10 +1346,22 @@
     }
   }
 
-  function stopRecording() {
-    if (state.recorder && state.recorder.state !== 'inactive') {
-      state.recorder.requestData();
-      state.recorder.stop();
+  function stopRecording(reason = 'user') {
+    if (state.stopRequested || !state.recorder || state.recorder.state === 'inactive') return;
+    state.stopRequested = true;
+    state.stopReason = reason;
+    elements.stopBtn.disabled = true;
+    elements.stopBtn.textContent = 'Finalisation…';
+    elements.recordQuality.textContent = reason === 'media-ended'
+      ? 'Fin de la vidéo · finalisation…'
+      : 'Finalisation de la vidéo…';
+    try { state.recorder.requestData(); } catch (_) {}
+    try { state.recorder.stop(); }
+    catch (error) {
+      state.stopRequested = false;
+      elements.stopBtn.disabled = false;
+      elements.stopBtn.textContent = '■ Stop';
+      showStatus(`Arrêt impossible : ${error?.message || 'erreur inconnue'}`, true, 5000);
     }
   }
 
@@ -1309,6 +1380,7 @@
     state.audioGraph = null;
     releaseWakeLock();
     setRecordingUi(false);
+    elements.stopBtn.textContent = '■ Stop';
     updateAudioLabel();
     const meterStream = state.micOnlyStream || state.cameraStream;
     if (meterStream) startLiveMeter(meterStream);
@@ -1317,14 +1389,32 @@
   async function finishRecording() {
     const mimeType = state.recorder?.mimeType || state.chunks[0]?.type || 'video/webm';
     state.recordingBlob = new Blob(state.chunks, { type: mimeType });
+    if (state.recordingBlob.size < 1024) {
+      const interrupted = state.stopReason === 'background';
+      clearRecordingResult();
+      await cleanupAfterRecording();
+      state.stopRequested = false;
+      showStatus(interrupted
+        ? 'Tournage interrompu en arrière-plan · aucune vidéo exploitable'
+        : 'La prise est vide · recommence le tournage', true, 6000);
+      return;
+    }
     const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
     state.recordingName = `Grok_Teleprompteur_${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`;
     state.downloadUrl = URL.createObjectURL(state.recordingBlob);
-    elements.download.style.display = 'block';
+    state.recordingSaved = false;
+    showRecordingResult();
     elements.download.textContent = '⬇ Télécharger la vidéo';
     elements.recordQuality.textContent = `${(state.recordingBlob.size / 1048576).toFixed(1)} Mo · prête à télécharger`;
     await cleanupAfterRecording();
-    showStatus('Vidéo prête · appuie sur le bouton vert');
+    const reason = state.stopReason;
+    state.stopRequested = false;
+    state.stopReason = '';
+    showStatus(reason === 'media-ended'
+      ? 'Vidéo terminée et prête à télécharger'
+      : reason === 'background'
+        ? 'Tournage arrêté car l’application est passée en arrière-plan'
+        : 'Vidéo prête · appuie sur le bouton vert', reason === 'background', 5200);
   }
 
   function bufferToBase64(buffer) {
@@ -1359,6 +1449,8 @@
   async function saveRecording() {
     if (!state.recordingBlob) return;
     elements.download.disabled = true;
+    elements.discardRecording.disabled = true;
+    let saved = false;
     try {
       if (window.AndroidBridge?.beginSave) {
         await saveWithAndroidBridge(state.recordingBlob, state.recordingName);
@@ -1372,12 +1464,24 @@
         anchor.remove();
         showStatus('Téléchargement lancé');
       }
+      state.recordingSaved = true;
+      saved = true;
+      elements.download.classList.add('saved');
     } catch (error) {
       showStatus(`Échec du téléchargement : ${error.message}`, true, 5000);
     } finally {
       elements.download.disabled = false;
-      elements.download.textContent = '⬇ Télécharger la vidéo';
+      elements.discardRecording.disabled = false;
+      elements.download.textContent = saved ? '✓ Vidéo téléchargée' : '⬇ Réessayer le téléchargement';
     }
+  }
+
+  function discardRecording() {
+    if (!state.recordingBlob) return;
+    if (!window.confirm('Supprimer cette prise pour pouvoir en refaire une ?')) return;
+    clearRecordingResult();
+    elements.recordQuality.textContent = 'Prêt pour une nouvelle prise';
+    showStatus('Prise supprimée · tu peux recommencer');
   }
 
   function saveScript() {
@@ -1472,10 +1576,16 @@
   elements.retryMicrophoneBtn.addEventListener('click', activateMicrophone);
   elements.activateMicBtn.addEventListener('click', activateMicrophone);
   elements.recBtn.addEventListener('click', startRecording);
-  elements.stopBtn.addEventListener('click', stopRecording);
+  elements.stopBtn.addEventListener('click', () => stopRecording('user'));
   elements.download.addEventListener('click', saveRecording);
+  elements.discardRecording.addEventListener('click', discardRecording);
   elements.playBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.play().catch(() => {}); });
   elements.pauseBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.pause(); });
+  elements.mediaVideo.addEventListener('ended', () => {
+    if (state.mediaType === 'video' && state.mode !== 'live' && state.recorder?.state === 'recording') {
+      stopRecording('media-ended');
+    }
+  });
   $('tlBtn').addEventListener('click', () => moveFace('tl'));
   $('trBtn').addEventListener('click', () => moveFace('tr'));
   $('brBtn').addEventListener('click', () => moveFace('br'));
@@ -1574,37 +1684,76 @@
     showStatus('Positions réinitialisées');
   });
 
+  function failMediaImport(message) {
+    const failedUrl = state.mediaUrl;
+    state.mediaUrl = '';
+    state.mediaType = '';
+    state.mediaName = '';
+    elements.mediaImage.onload = null;
+    elements.mediaImage.onerror = null;
+    elements.mediaVideo.onloadedmetadata = null;
+    elements.mediaVideo.onerror = null;
+    elements.mediaVideo.pause();
+    elements.mediaVideo.removeAttribute('src');
+    elements.mediaVideo.load();
+    elements.mediaImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+    if (failedUrl) URL.revokeObjectURL(failedUrl);
+    setAspect(9, 16);
+    displayImportedMedia();
+    updateMediaInfo();
+    showStatus(message, true, 5200);
+  }
+
   elements.mediaInput.addEventListener('change', (event) => {
     const file = event.target.files?.[0];
+    event.target.value = '';
     if (!file) return;
     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
       showStatus('Choisis une image ou une vidéo', true);
       return;
     }
+    if (!file.size) {
+      showStatus('Ce fichier est vide ou illisible', true, 4500);
+      return;
+    }
     if (state.mediaUrl) URL.revokeObjectURL(state.mediaUrl);
     state.mediaUrl = URL.createObjectURL(file);
-    elements.download.style.display = 'none';
+    state.mediaName = file.name || 'Média sans nom';
     resetMediaView();
     if (file.type.startsWith('image/')) {
       state.mediaType = 'image';
       elements.mediaImage.onload = () => {
+        if (!elements.mediaImage.naturalWidth || !elements.mediaImage.naturalHeight) {
+          failMediaImport('Cette image ne peut pas être lue');
+          return;
+        }
         setAspect(elements.mediaImage.naturalWidth, elements.mediaImage.naturalHeight);
         displayImportedMedia();
+        updateMediaInfo();
         showStatus('Image prête');
       };
+      elements.mediaImage.onerror = () => failMediaImport('Format d’image non compatible');
       elements.mediaImage.src = state.mediaUrl;
     } else {
       state.mediaType = 'video';
       elements.mediaVideo.onloadedmetadata = () => {
+        if (!elements.mediaVideo.videoWidth || !elements.mediaVideo.videoHeight) {
+          failMediaImport('Cette vidéo ne peut pas être lue');
+          return;
+        }
+        try { elements.mediaVideo.currentTime = 0; } catch (_) {}
         setAspect(elements.mediaVideo.videoWidth, elements.mediaVideo.videoHeight);
         displayImportedMedia();
+        updateMediaInfo(elements.mediaVideo.duration);
         showStatus('Vidéo prête');
       };
+      elements.mediaVideo.onerror = () => failMediaImport('Codec vidéo non compatible avec ce téléphone');
       elements.mediaVideo.src = state.mediaUrl;
       elements.mediaVideo.muted = true;
       elements.mediaVideo.load();
     }
     displayImportedMedia();
+    updateMediaInfo();
   });
 
   function startFaceGesture(kind, point) {
@@ -1821,22 +1970,28 @@
 
   window.addEventListener('resize', resizeStage);
   window.addEventListener('beforeunload', (event) => {
-    if (state.recorder && state.recorder.state !== 'inactive') {
+    if ((state.recorder && state.recorder.state !== 'inactive') || (state.recordingBlob && !state.recordingSaved)) {
       event.preventDefault();
       event.returnValue = '';
     }
   });
   window.addEventListener('pagehide', () => {
-    if (state.recorder && state.recorder.state !== 'inactive') state.recorder.stop();
+    if (state.recorder && state.recorder.state !== 'inactive') stopRecording('background');
     stopCameraTracks();
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && (!state.recorder || state.recorder.state === 'inactive')) {
-      state.resumeCamera = state.resumeCamera || hasLiveCamera();
-      stopCameraTracks();
-    } else if (!document.hidden && state.recorder?.state === 'recording') {
+    if (document.hidden) {
+      if (state.recorder?.state === 'recording') {
+        stopRecording('background');
+      } else {
+        state.resumeCamera = state.resumeCamera || hasLiveCamera();
+        stopCameraTracks();
+      }
+      return;
+    }
+    if (state.recorder?.state === 'recording') {
       requestWakeLock();
-    } else if (!document.hidden && state.resumeCamera) {
+    } else if (state.resumeCamera) {
       state.resumeCamera = false;
       startCamera();
     }
@@ -1849,6 +2004,7 @@
   applyMediaView();
   updateTeleText(true);
   updateMixerUi();
+  updateMediaInfo();
 
   if ('serviceWorker' in navigator && location.hostname !== 'appassets.androidplatform.net') {
     navigator.serviceWorker.register('./sw.js').catch(() => {});

@@ -123,6 +123,8 @@ body[data-mode="media"] #mediaImportRow { grid-template-columns: 1fr; }
 body[data-mode="media"] #cameraBtn,
 body[data-mode="media"] #cameraHelp,
 body[data-mode="media"] #cameraControls { display: none; }
+.mediaInfo { margin: 8px 14px 0; overflow: hidden; color: #94a3b8; font-size: 12px; font-weight: 800; line-height: 1.35; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+body[data-mode="live"] .mediaInfo { display: none; }
 .cameraHelp { margin: 10px 12px 0; padding: 12px; border: 1px solid rgba(248,113,113,.55); border-radius: 12px; background: rgba(127,29,29,.28); }
 .cameraHelp p { color: #fecaca; font-size: 13px; font-weight: 800; line-height: 1.4; }
 .cameraHelpActions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
@@ -163,7 +165,13 @@ progress::-webkit-progress-value { background: linear-gradient(90deg,#10b981,#fa
 
 .scriptLabel { display: block; margin: 8px 12px 0; color: var(--muted); font-size: 13px; font-weight: 800; }
 textarea { width: calc(100% - 24px); min-height: 130px; margin: 7px 12px 0; padding: 12px; resize: vertical; border: 1px solid #26344f; border-radius: 12px; background: #080c17; color: #fff; font-family: monospace; font-size: 16px; line-height: 1.4; }
-.download { display: none; width: calc(100% - 24px); min-height: 58px; margin: 12px; padding: 12px; border: 0; border-radius: 12px; background: var(--green); color: #062014; font-weight: 900; font-size: 17px; }
+.resultActions { display: none; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 9px; margin: 12px; }
+.resultActions.ready { display: grid; }
+.download, .discardRecording { min-height: 58px; padding: 10px; border: 0; border-radius: 12px; font-weight: 900; }
+.download { display: block; background: var(--green); color: #062014; font-size: 16px; }
+.download.saved { background: #047857; color: #ecfdf5; }
+.discardRecording { border: 1px solid rgba(248,113,113,.45); background: rgba(127,29,29,.35); color: #fecaca; font-size: 13px; }
+.download:disabled, .discardRecording:disabled { opacity: .5; }
 .storageHint { margin: 0 14px 10px; color: #8090aa; text-align: center; font-size: 11px; }
 .status { position: fixed; top: max(12px, env(safe-area-inset-top)); left: 50%; z-index: 100; display: none; max-width: calc(100% - 24px); padding: 10px 16px; transform: translateX(-50%); border: 1px solid rgba(255,255,255,.16); border-radius: 999px; background: #0f172a; font-weight: 900; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hide { display: none !important; }
@@ -171,6 +179,7 @@ textarea { width: calc(100% - 24px); min-height: 130px; margin: 7px 12px 0; padd
 body.recording .top, body.recording .controls, body.recording .settings, body.recording .audioMixer, body.recording .formatPicker, body.recording textarea { opacity: .62; pointer-events: none; }
 body.recording .teleprompter { pointer-events: none; border-color: transparent; }
 body.recording .teleMoveHandle, body.recording .resizeHandle, body.recording .moveBadge { display: none; }
+body.recording .resultActions { pointer-events: none; opacity: .5; }
 
 @media (max-width: 430px) {
   .viewer { height: 50dvh; min-height: 325px; }
@@ -182,6 +191,8 @@ body.recording .teleMoveHandle, body.recording .resizeHandle, body.recording .mo
   .teleprompter { border-radius: 14px; }
   .teleText { padding: 22px 12px; line-height: 1.23; }
   .row4 .btn { min-height: 46px; padding: 6px 3px; font-size: 12px; }
+  .resultActions { grid-template-columns: 1fr; }
+  .discardRecording { min-height: 48px; }
 }
 
 @media (max-width: 360px) {

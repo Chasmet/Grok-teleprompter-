@@ -46,6 +46,9 @@ test('image import and media controls remain coherent', async ({ page }) => {
   await expect(page.locator('#empty')).toBeHidden();
   await expect(page.locator('#playBtn')).toBeDisabled();
   await expect(page.locator('#pauseBtn')).toBeDisabled();
+  await expect(page.locator('#mediaImportLabel')).toHaveText('Changer le média');
+  await expect(page.locator('#mediaInfo')).toContainText('icon-512.png');
+  await expect(page.locator('#mediaInfo')).toContainText('512 × 512');
 });
 
 test('imported media records a voice-over with a visible teleprompter and no camera', async ({ page }) => {
@@ -75,6 +78,16 @@ test('imported media records a voice-over with a visible teleprompter and no cam
   await page.waitForTimeout(700);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator('#discardRecording')).toBeVisible();
+  await expect(page.locator('#recordQuality')).toContainText('prête à télécharger');
+
+  await page.locator('#recBtn').click();
+  await expect(page.locator('#stopBtn')).toBeDisabled();
+  await expect(page.locator('#status')).toContainText('prise précédente');
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#discardRecording').click();
+  await expect(page.locator('#resultActions')).toBeHidden();
 });
 
 test('imported media keeps its own format when the webcam orientation changes', async ({ page }) => {
@@ -170,6 +183,9 @@ test('recording still starts when an enabled microphone is unavailable', async (
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
 
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.locator('#discardRecording').click();
+  await expect(page.locator('#resultActions')).toBeHidden();
   await page.locator('#microphoneToggleLabel').click();
   await expect(page.locator('#includeMicrophone')).not.toBeChecked();
   await page.locator('#recBtn').click();

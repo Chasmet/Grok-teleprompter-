@@ -116,9 +116,10 @@
 
       <section class="controls">
         <div id="mediaImportRow" class="row">
-          <label class="btn primary" for="mediaInput">Importer un média</label>
+          <label id="mediaImportLabel" class="btn primary" for="mediaInput">Importer un média</label>
           <button id="cameraBtn" class="btn primary" type="button">Activer la caméra</button>
         </div>
+        <p id="mediaInfo" class="mediaInfo" aria-live="polite">Aucun média importé</p>
         <div id="cameraHelp" class="cameraHelp hide" role="alert">
           <p id="cameraHelpText"></p>
           <div class="cameraHelpActions">
@@ -189,7 +190,10 @@
       <textarea id="scriptInput" spellcheck="true">Bienvenue dans Grok Téléprompteur Studio.
 Regarde la caméra et laisse le texte défiler naturellement.</textarea>
 
-      <button id="download" class="download" type="button">⬇ Télécharger la vidéo</button>
+      <div id="resultActions" class="resultActions">
+        <button id="download" class="download" type="button">⬇ Télécharger la vidéo</button>
+        <button id="discardRecording" class="discardRecording" type="button">↻ Refaire une prise</button>
+      </div>
       <p class="storageHint">Dans l’APK, la vidéo téléchargée est placée dans Films/Grok Téléprompteur.</p>
     </main>
 
