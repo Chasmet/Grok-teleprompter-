@@ -48,7 +48,7 @@ test('image import and media controls remain coherent', async ({ page }) => {
   await expect(page.locator('#pauseBtn')).toBeDisabled();
   await expect(page.locator('#mediaImportLabel')).toHaveText('Changer le média');
   await expect(page.locator('#mediaInfo')).toContainText('icon-512.png');
-  await expect(page.locator('#mediaInfo')).toContainText('512 × 512');
+  await expect(page.locator('#mediaInfo')).toHaveText(/Image · icon-512\.png · \d+ × \d+/);
 });
 
 test('imported media records a voice-over with a visible teleprompter and no camera', async ({ page }) => {
@@ -190,6 +190,7 @@ test('recording still starts when an enabled microphone is unavailable', async (
   await expect(page.locator('#includeMicrophone')).not.toBeChecked();
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  await page.waitForTimeout(500);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
 });
