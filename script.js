@@ -172,6 +172,11 @@
     state.mode = mode;
     state.viewPointers.clear();
     stopTeleprompter(true);
+    if (mode === 'media') {
+      state.resumeCamera = false;
+      void stopCameraVideo();
+      elements.cameraHelp.classList.add('hide');
+    }
     if (mode === 'live') {
       elements.empty.classList.add('hide');
       elements.mediaVideo.classList.add('hide');
@@ -304,14 +309,14 @@
   }
 
   function updateEmptyVisibility() {
-    const promptVisible = teleHasText() && (state.mode === 'live' || state.mode === 'facecam');
+    const promptVisible = teleHasText();
     const shouldHide = state.mode === 'live' || Boolean(state.mediaType) || promptVisible || hasLiveCamera();
     elements.empty.classList.toggle('hide', shouldHide);
   }
 
   function teleHasText() { return Boolean(elements.scriptInput.value.trim()); }
   function updateTeleVisibility() {
-    const visible = teleHasText() && (state.mode === 'live' || state.mode === 'facecam');
+    const visible = teleHasText();
     elements.teleprompter.classList.toggle('hide', !visible);
     updateEmptyVisibility();
   }
@@ -362,7 +367,7 @@
   }
   function startTeleprompter() {
     updateTeleText(true);
-    if (!teleHasText() || state.mode === 'media') return;
+    if (!teleHasText()) return;
     updateTeleScrollMode();
     if (!state.teleShouldScroll) {
       state.teleRunning = false;
@@ -1693,7 +1698,7 @@
   }
 
   elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (state.mode === 'media' || document.body.classList.contains('recording')) return;
+    if (document.body.classList.contains('recording')) return;
     stopTeleprompter(true);
     const point = { id: event.pointerId, x: event.clientX, y: event.clientY };
     state.telePointers.set(event.pointerId, point);

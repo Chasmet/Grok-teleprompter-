@@ -146,6 +146,17 @@ test('the tactile and short-text safeguards stay wired', () => {
   assert.match(script, /grokTeleprompterLayout/);
 });
 
+test('imported media keeps the teleprompter for voice-over without recording it into the video', () => {
+  assert.match(script, /function updateTeleVisibility\(\) \{\s*const visible = teleHasText\(\)/);
+  assert.match(script, /function startTeleprompter\(\) \{[\s\S]*if \(!teleHasText\(\)\) return/);
+  assert.doesNotMatch(script, /state\.mode === 'media' \|\| document\.body\.classList\.contains\('recording'\)/);
+  assert.doesNotMatch(serviceWorker, /grok-teleprompter-studio-v16/);
+
+  const drawFrame = script.match(/function drawFrame\(context, canvas\) \{[\s\S]*?\n  \}\n\n  function outputSize/);
+  assert.ok(drawFrame, 'La fonction de composition vidéo doit être trouvée');
+  assert.doesNotMatch(drawFrame[0], /teleprompter|teleText/);
+});
+
 test('imported media stays automatic and only the facecam gets a selectable aspect', () => {
   assert.match(script, /const ratio = state\.mediaWidth \/ state\.mediaHeight/);
   assert.match(script, /const sourceWidth = state\.mode === 'live' \? 1080 : state\.mediaWidth/);
