@@ -41,7 +41,9 @@
 
   const state = {
     studioMode: 'classic', mode: 'facecam', classicMode: 'facecam',
-    mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '', mediaName: '',
+    mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '', mediaName: '', mediaDuration: 0,
+    classicMedia: { type: '', width: 720, height: 1280, url: '', name: '', duration: 0, view: { scale: 1, x: 0, y: 0 } },
+    greenMedia: { type: '', width: 720, height: 1280, url: '', name: '', duration: 0, view: { scale: 1, x: 0, y: 0 } },
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
@@ -49,7 +51,7 @@
     recordingStarting: false, stopRequested: false, stopReason: '', recordingSaved: true,
     facingMode: 'user', mirrored: true,
     face: { ...DEFAULT_FACE }, classicFace: { ...DEFAULT_FACE }, greenFace: { ...DEFAULT_GREEN_FACE },
-    classicSegmentationEnabled: true, facePointers: new Map(), faceGesture: null,
+    facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
     teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
@@ -168,29 +170,21 @@
 
   const greenStudioActive = () => state.studioMode === 'green';
   const segmentationWanted = () => state.segmentationSupported
-    && (greenStudioActive() || elements.segmentationEnabled.checked) && hasLiveCamera();
-  const cameraCutoutRequired = () => hasLiveCamera()
-    && (greenStudioActive() || segmentationWanted());
+    && greenStudioActive() && hasLiveCamera();
+  const cameraCutoutRequired = () => greenStudioActive() && hasLiveCamera();
 
   function updateSegmentationUi() {
-    elements.segmentationEnabled.checked = greenStudioActive()
-      ? true : state.classicSegmentationEnabled;
-    elements.segmentationEnabled.disabled = greenStudioActive()
-      || !state.segmentationSupported || document.body.classList.contains('recording');
-    if (greenStudioActive() && !state.segmentationSupported) {
-      elements.segmentationLabel.textContent = 'Fond vert IA · disponible dans l’APK';
-    } else if (greenStudioActive() && state.segmentationReady) {
-      elements.segmentationLabel.textContent = 'Fond vert IA · silhouette prête';
-    } else if (greenStudioActive()) {
-      elements.segmentationLabel.textContent = 'Fond vert IA · obligatoire · préparation';
+    const green = greenStudioActive();
+    elements.segmentationEnabled.checked = green;
+    elements.segmentationEnabled.disabled = true;
+    if (!green) {
+      elements.segmentationLabel.textContent = 'Détourage réservé au mode FOND VERT';
     } else if (!state.segmentationSupported) {
-      elements.segmentationLabel.textContent = 'Détourage IA caméra · APK uniquement';
-    } else if (!elements.segmentationEnabled.checked) {
-      elements.segmentationLabel.textContent = 'Détourage IA caméra · OFF';
+      elements.segmentationLabel.textContent = 'Fond vert IA · disponible dans l’APK';
     } else if (state.segmentationReady) {
-      elements.segmentationLabel.textContent = 'Détourage IA caméra · fluide';
+      elements.segmentationLabel.textContent = 'Fond vert IA · silhouette prête';
     } else {
-      elements.segmentationLabel.textContent = 'Détourage IA caméra · préparation';
+      elements.segmentationLabel.textContent = 'Fond vert IA · obligatoire · préparation';
     }
   }
 
@@ -309,6 +303,41 @@
     }
   };
 
+  function snapshotCurrentMedia() {
+    return {
+      type: state.mediaType,
+      width: state.mediaWidth,
+      height: state.mediaHeight,
+      url: state.mediaUrl,
+      name: state.mediaName,
+      duration: state.mediaDuration,
+      view: { ...state.mediaView }
+    };
+  }
+
+  function storeCurrentStudioMedia() {
+    const snapshot = snapshotCurrentMedia();
+    if (greenStudioActive()) state.greenMedia = snapshot;
+    else state.classicMedia = snapshot;
+  }
+
+  function restoreStudioMedia(savedMedia) {
+    const media = savedMedia || {};
+    state.mediaType = media.type || '';
+    state.mediaWidth = Math.max(1, Number(media.width) || 720);
+    state.mediaHeight = Math.max(1, Number(media.height) || 1280);
+    state.mediaUrl = media.url || '';
+    state.mediaName = media.name || '';
+    state.mediaDuration = Number.isFinite(Number(media.duration)) ? Number(media.duration) : 0;
+    state.mediaView = {
+      scale: clamp(Number(media.view?.scale) || 1, 1, 5),
+      x: Number(media.view?.x) || 0,
+      y: Number(media.view?.y) || 0
+    };
+    setAspect(state.mediaWidth, state.mediaHeight);
+    loadActiveMediaElements(false);
+  }
+
   function updateStudioModeUi() {
     const green = greenStudioActive();
     document.body.dataset.studioMode = green ? 'green' : 'classic';
@@ -329,18 +358,22 @@
     if (mode !== 'classic' && mode !== 'green') return;
     if (state.recorder && state.recorder.state !== 'inactive') return;
     if (state.studioMode === mode) {
+      elements.segmentationEnabled.checked = mode === 'green';
       updateStudioModeUi();
+      if (mode === 'green' && hasLiveCamera()) startCameraSegmentation();
+      else stopCameraSegmentation();
+      updateSegmentationUi();
       return;
     }
 
     stopTeleprompter(true);
     state.viewPointers.clear();
+    storeCurrentStudioMedia();
     if (state.studioMode === 'green') {
       state.greenFace = { ...state.face };
     } else {
       state.classicFace = { ...state.face };
       state.classicMode = state.mode;
-      state.classicSegmentationEnabled = elements.segmentationEnabled.checked;
     }
 
     state.studioMode = mode;
@@ -348,11 +381,12 @@
       state.mode = 'facecam';
       state.face = { ...state.greenFace };
       elements.segmentationEnabled.checked = true;
-      if (!state.mediaType) setAspect(9, 16);
+      restoreStudioMedia(state.greenMedia);
     } else {
       state.mode = state.classicMode || 'facecam';
       state.face = { ...state.classicFace };
-      elements.segmentationEnabled.checked = state.classicSegmentationEnabled;
+      elements.segmentationEnabled.checked = false;
+      restoreStudioMedia(state.classicMedia);
     }
 
     applyFaceAspect();
@@ -365,7 +399,7 @@
       else stopCameraSegmentation();
     }
     updateTeleText(true);
-    updateMediaInfo(state.mediaType === 'video' ? elements.mediaVideo.duration : 0);
+    updateMediaInfo(state.mediaDuration);
     if (announce) showStatus(mode === 'green'
       ? 'Studio Fond Vert activé · ajoute ton décor puis active la caméra'
       : 'Studio Classique activé');
@@ -1755,7 +1789,6 @@
       localStorage.setItem('grokTeleprompterAudio', elements.audioMode.value);
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
       localStorage.setItem('grokTeleprompterFaceOrientation', selectedFaceOrientation());
-      localStorage.setItem('grokTeleprompterSegmentation', String(elements.segmentationEnabled.checked));
       localStorage.setItem('grokTeleprompterSpeed', elements.speedRange.value);
       localStorage.setItem('grokTeleprompterSize', elements.sizeRange.value);
       localStorage.setItem('grokTeleprompterMixer', JSON.stringify({
@@ -1792,7 +1825,6 @@
       const audio = localStorage.getItem('grokTeleprompterAudio');
       const quality = localStorage.getItem('grokTeleprompterQuality');
       const faceOrientation = localStorage.getItem('grokTeleprompterFaceOrientation');
-      const segmentation = localStorage.getItem('grokTeleprompterSegmentation');
       const speed = localStorage.getItem('grokTeleprompterSpeed');
       const size = localStorage.getItem('grokTeleprompterSize');
       const layout = JSON.parse(localStorage.getItem('grokTeleprompterLayout') || 'null');
@@ -1802,8 +1834,7 @@
       if (quality === '720' || quality === '1080') elements.videoQuality.value = quality;
       elements.faceFormatHorizontal.checked = faceOrientation === 'horizontal';
       elements.faceFormatVertical.checked = faceOrientation !== 'horizontal';
-      if (segmentation === 'false') elements.segmentationEnabled.checked = false;
-      state.classicSegmentationEnabled = elements.segmentationEnabled.checked;
+      elements.segmentationEnabled.checked = false;
       if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
       if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
       if (mixer) {
@@ -1881,20 +1912,11 @@
     saveScript();
   });
   elements.segmentationEnabled.addEventListener('change', () => {
-    if (greenStudioActive()) {
-      elements.segmentationEnabled.checked = true;
-      updateSegmentationUi();
-      showStatus('Le détourage reste obligatoire en mode Fond Vert');
-      return;
-    }
-    state.classicSegmentationEnabled = elements.segmentationEnabled.checked;
-    if (elements.segmentationEnabled.checked) startCameraSegmentation();
-    else stopCameraSegmentation();
+    elements.segmentationEnabled.checked = greenStudioActive();
     updateSegmentationUi();
-    saveScript();
-    showStatus(elements.segmentationEnabled.checked
-      ? 'Détourage IA de la caméra activé'
-      : 'Détourage caméra désactivé');
+    showStatus(greenStudioActive()
+      ? 'Le détourage reste obligatoire en mode Fond Vert'
+      : 'Le mode Classique reste sans détourage');
   });
   elements.audioMode.addEventListener('change', async () => {
     saveScript();
@@ -1981,12 +2003,7 @@
     showStatus('Positions réinitialisées');
   });
 
-  function clearImportedMedia() {
-    if (state.recorder && state.recorder.state !== 'inactive') return;
-    const previousUrl = state.mediaUrl;
-    state.mediaUrl = '';
-    state.mediaType = '';
-    state.mediaName = '';
+  function detachMediaElements() {
     elements.mediaVideo.pause();
     elements.mediaImage.onload = null;
     elements.mediaImage.onerror = null;
@@ -1995,9 +2012,75 @@
     elements.mediaVideo.removeAttribute('src');
     elements.mediaVideo.load();
     elements.mediaImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  }
+
+  function loadActiveMediaElements(announce = false) {
+    detachMediaElements();
+    const expectedUrl = state.mediaUrl;
+    const expectedType = state.mediaType;
+    if (!expectedUrl || !expectedType) {
+      displayImportedMedia();
+      updateMediaInfo();
+      return;
+    }
+
+    if (expectedType === 'image') {
+      elements.mediaImage.onload = () => {
+        if (state.mediaUrl !== expectedUrl || state.mediaType !== 'image') return;
+        if (!elements.mediaImage.naturalWidth || !elements.mediaImage.naturalHeight) {
+          failMediaImport('Cette image ne peut pas être lue');
+          return;
+        }
+        state.mediaDuration = 0;
+        setAspect(elements.mediaImage.naturalWidth, elements.mediaImage.naturalHeight);
+        storeCurrentStudioMedia();
+        displayImportedMedia();
+        updateMediaInfo();
+        if (announce) showStatus(greenStudioActive() ? 'Décor image prêt' : 'Image prête');
+      };
+      elements.mediaImage.onerror = () => {
+        if (state.mediaUrl === expectedUrl) failMediaImport('Format d’image non compatible');
+      };
+      elements.mediaImage.src = expectedUrl;
+    } else {
+      elements.mediaVideo.onloadedmetadata = () => {
+        if (state.mediaUrl !== expectedUrl || state.mediaType !== 'video') return;
+        if (!elements.mediaVideo.videoWidth || !elements.mediaVideo.videoHeight) {
+          failMediaImport('Cette vidéo ne peut pas être lue');
+          return;
+        }
+        try { elements.mediaVideo.currentTime = 0; } catch (_) {}
+        state.mediaDuration = Number.isFinite(elements.mediaVideo.duration) ? elements.mediaVideo.duration : 0;
+        setAspect(elements.mediaVideo.videoWidth, elements.mediaVideo.videoHeight);
+        storeCurrentStudioMedia();
+        displayImportedMedia();
+        updateMediaInfo(state.mediaDuration);
+        if (announce) showStatus(greenStudioActive() ? 'Décor vidéo prêt' : 'Vidéo prête');
+      };
+      elements.mediaVideo.onerror = () => {
+        if (state.mediaUrl === expectedUrl) failMediaImport('Codec vidéo non compatible avec ce téléphone');
+      };
+      elements.mediaVideo.src = expectedUrl;
+      elements.mediaVideo.muted = true;
+      elements.mediaVideo.load();
+    }
+    applyMediaView();
+    displayImportedMedia();
+    updateMediaInfo(state.mediaDuration);
+  }
+
+  function clearImportedMedia() {
+    if (state.recorder && state.recorder.state !== 'inactive') return;
+    const previousUrl = state.mediaUrl;
+    state.mediaUrl = '';
+    state.mediaType = '';
+    state.mediaName = '';
+    state.mediaDuration = 0;
+    detachMediaElements();
     if (previousUrl) URL.revokeObjectURL(previousUrl);
     resetMediaView();
     setAspect(9, 16);
+    storeCurrentStudioMedia();
     displayImportedMedia();
     updateMediaInfo();
   }
@@ -2007,16 +2090,12 @@
     state.mediaUrl = '';
     state.mediaType = '';
     state.mediaName = '';
-    elements.mediaImage.onload = null;
-    elements.mediaImage.onerror = null;
-    elements.mediaVideo.onloadedmetadata = null;
-    elements.mediaVideo.onerror = null;
-    elements.mediaVideo.pause();
-    elements.mediaVideo.removeAttribute('src');
-    elements.mediaVideo.load();
-    elements.mediaImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+    state.mediaDuration = 0;
+    detachMediaElements();
     if (failedUrl) URL.revokeObjectURL(failedUrl);
+    resetMediaView();
     setAspect(9, 16);
+    storeCurrentStudioMedia();
     displayImportedMedia();
     updateMediaInfo();
     showStatus(message, true, 5200);
@@ -2037,41 +2116,14 @@
     if (state.mediaUrl) URL.revokeObjectURL(state.mediaUrl);
     state.mediaUrl = URL.createObjectURL(file);
     state.mediaName = file.name || 'Média sans nom';
+    state.mediaType = file.type.startsWith('image/') ? 'image' : 'video';
+    state.mediaWidth = 720;
+    state.mediaHeight = 1280;
+    state.mediaDuration = 0;
     resetMediaView();
-    if (file.type.startsWith('image/')) {
-      state.mediaType = 'image';
-      elements.mediaImage.onload = () => {
-        if (!elements.mediaImage.naturalWidth || !elements.mediaImage.naturalHeight) {
-          failMediaImport('Cette image ne peut pas être lue');
-          return;
-        }
-        setAspect(elements.mediaImage.naturalWidth, elements.mediaImage.naturalHeight);
-        displayImportedMedia();
-        updateMediaInfo();
-        showStatus('Image prête');
-      };
-      elements.mediaImage.onerror = () => failMediaImport('Format d’image non compatible');
-      elements.mediaImage.src = state.mediaUrl;
-    } else {
-      state.mediaType = 'video';
-      elements.mediaVideo.onloadedmetadata = () => {
-        if (!elements.mediaVideo.videoWidth || !elements.mediaVideo.videoHeight) {
-          failMediaImport('Cette vidéo ne peut pas être lue');
-          return;
-        }
-        try { elements.mediaVideo.currentTime = 0; } catch (_) {}
-        setAspect(elements.mediaVideo.videoWidth, elements.mediaVideo.videoHeight);
-        displayImportedMedia();
-        updateMediaInfo(elements.mediaVideo.duration);
-        showStatus('Vidéo prête');
-      };
-      elements.mediaVideo.onerror = () => failMediaImport('Codec vidéo non compatible avec ce téléphone');
-      elements.mediaVideo.src = state.mediaUrl;
-      elements.mediaVideo.muted = true;
-      elements.mediaVideo.load();
-    }
-    displayImportedMedia();
-    updateMediaInfo();
+    setAspect(9, 16);
+    storeCurrentStudioMedia();
+    loadActiveMediaElements(true);
   });
 
   function startFaceGesture(kind, point) {

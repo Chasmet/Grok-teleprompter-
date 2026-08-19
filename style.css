@@ -49,6 +49,10 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .greenImportButton, .greenResetButton { min-height: 50px; padding: 8px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 900; text-align: center; }
 .greenImportButton { border: 1px solid #34d399; background: #065f46; }
 .greenResetButton { border: 1px solid rgba(255,255,255,.18); background: #1e293b; }
+body[data-studio-mode="classic"] #segmentationSetting { display: none; }
+body[data-studio-mode="classic"] .stage { background: #000 !important; }
+body[data-studio-mode="classic"] .faceFrame .cameraCutout { display: none !important; }
+body[data-studio-mode="classic"] .faceFrame video { visibility: visible !important; }
 body[data-studio-mode="green"] .top { display: none; }
 body[data-studio-mode="green"] .greenScreenPanel { display: block; }
 body[data-studio-mode="green"] .stage { background: #00b140; }

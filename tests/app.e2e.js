@@ -14,6 +14,10 @@ test('classic and green-screen studios expose two distinct experiences', async (
   await expect(classicTab).toHaveClass(/active/);
   await expect(page.locator('.top')).toBeVisible();
   await expect(page.locator('#greenScreenPanel')).toBeHidden();
+  await expect(page.locator('#segmentationSetting')).toBeHidden();
+  await expect(page.locator('#segmentationEnabled')).not.toBeChecked();
+  await expect(page.locator('#segmentationEnabled')).toBeDisabled();
+  await expect(page.locator('#stage')).toHaveCSS('background-color', 'rgb(0, 0, 0)');
 
   await greenTab.click();
   await expect(page.locator('body')).toHaveAttribute('data-studio-mode', 'green');
@@ -30,12 +34,20 @@ test('classic and green-screen studios expose two distinct experiences', async (
   await expect(page.locator('#greenImportLabel')).toHaveText('Changer le décor');
   await expect(page.locator('#mediaInfo')).toContainText('Décor image');
 
+  await classicTab.click();
+  await expect(page.locator('body')).toHaveAttribute('data-studio-mode', 'classic');
+  await expect(page.locator('#mediaImage')).toBeHidden();
+  await expect(page.locator('#mediaInfo')).toHaveText('Aucun média importé');
+  await expect(page.locator('#stage')).toHaveCSS('background-color', 'rgb(0, 0, 0)');
+
+  await greenTab.click();
+  await expect(page.locator('#mediaImage')).toBeVisible();
+  await expect(page.locator('#mediaInfo')).toContainText('Décor image');
   await page.locator('#greenResetBackground').click();
   await expect(page.locator('#mediaImage')).toBeHidden();
   await expect(page.locator('#mediaInfo')).toHaveText('Décor vert prêt');
 
   await classicTab.click();
-  await expect(page.locator('body')).toHaveAttribute('data-studio-mode', 'classic');
   await expect(page.locator('.top')).toBeVisible();
   await expect(page.locator('#greenScreenPanel')).toBeHidden();
 });

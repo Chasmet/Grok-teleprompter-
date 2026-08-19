@@ -189,9 +189,19 @@ test('classic and green-screen studios remain separate', () => {
   for (const id of ['classicStudioTab', 'greenStudioTab', 'greenScreenPanel', 'greenImportLabel', 'greenResetBackground']) {
     assert.match(html, new RegExp(`id="${id}"`));
   }
+  assert.match(html, /<body data-mode="facecam" data-studio-mode="classic">/);
+  assert.doesNotMatch(html, /id="segmentationEnabled" type="checkbox" checked/);
   assert.match(script, /studioMode: 'classic'/);
   assert.match(script, /classicMode: 'facecam'/);
+  assert.match(script, /classicMedia: \{ type: '', width: 720, height: 1280/);
+  assert.match(script, /greenMedia: \{ type: '', width: 720, height: 1280/);
   assert.match(script, /const greenStudioActive = \(\) => state\.studioMode === 'green'/);
+  assert.match(script, /const segmentationWanted = \(\) => state\.segmentationSupported\s*&& greenStudioActive\(\) && hasLiveCamera\(\)/);
+  assert.match(script, /const cameraCutoutRequired = \(\) => greenStudioActive\(\) && hasLiveCamera\(\)/);
+  assert.doesNotMatch(script, /classicSegmentationEnabled/);
+  assert.match(script, /function storeCurrentStudioMedia\(\)/);
+  assert.match(script, /restoreStudioMedia\(state\.greenMedia\)/);
+  assert.match(script, /restoreStudioMedia\(state\.classicMedia\)/);
   assert.match(script, /state\.mode = 'facecam'/);
   assert.match(script, /context\.fillStyle = greenStudioActive\(\) \? '#00b140' : '#000'/);
   assert.match(script, /greenStudioActive\(\) && !state\.segmentationSupported/);
@@ -200,6 +210,10 @@ test('classic and green-screen studios remain separate', () => {
   assert.match(styles, /body\[data-studio-mode="green"\] \.top\s*\{\s*display:\s*none/);
   assert.match(styles, /body\[data-studio-mode="green"\] \.stage\s*\{\s*background:\s*#00b140/);
   assert.match(styles, /body\[data-studio-mode="green"\] \.faceFrame:not\(\.segmentationReady\) video\s*\{\s*visibility:\s*hidden/);
+  assert.match(styles, /body\[data-studio-mode="classic"\] #segmentationSetting\s*\{\s*display:\s*none/);
+  assert.match(styles, /body\[data-studio-mode="classic"\] \.stage\s*\{\s*background:\s*#000 !important/);
+  assert.match(styles, /body\[data-studio-mode="classic"\] \.faceFrame \.cameraCutout\s*\{\s*display:\s*none !important/);
+  assert.match(styles, /body\[data-studio-mode="classic"\] \.faceFrame video\s*\{\s*visibility:\s*visible !important/);
 });
 
 test('the sound meter cannot add a second audio path while recording', () => {

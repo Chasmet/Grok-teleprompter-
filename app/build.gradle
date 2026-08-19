@@ -10,8 +10,8 @@ android {
         applicationId 'com.chasmet.grokteleprompter'
         minSdk 29
         targetSdk 36
-        versionCode 18
-        versionName '2.15.0'
+        versionCode 19
+        versionName '2.15.1'
     }
 
     buildTypes {
