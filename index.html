@@ -32,6 +32,7 @@
           <img id="mediaImage" class="hide" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" alt="Média importé">
           <div id="faceFrame" class="faceFrame hide" aria-label="Fenêtre facecam tactile">
             <video id="cameraVideo" playsinline muted></video>
+            <canvas id="cameraCutout" class="cameraCutout" aria-hidden="true"></canvas>
             <span class="moveBadge" aria-hidden="true">✥</span>
             <button id="faceResizeHandle" class="resizeHandle" type="button" aria-label="Redimensionner la facecam">↘</button>
           </div>
@@ -183,6 +184,10 @@
             <option value="1080" selected>1080p haute qualité</option>
             <option value="720">720p fluide</option>
           </select>
+        </label>
+        <label class="checkLabel" for="segmentationEnabled">
+          <input id="segmentationEnabled" type="checkbox" checked>
+          <span id="segmentationLabel">Détourage IA caméra · APK</span>
         </label>
       </section>
 

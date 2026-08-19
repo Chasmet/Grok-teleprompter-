@@ -4,7 +4,8 @@
   const $ = (id) => document.getElementById(id);
   const elements = {
     stage: $('stage'), viewer: $('viewer'), empty: $('empty'), mediaVideo: $('mediaVideo'),
-    mediaImage: $('mediaImage'), cameraVideo: $('cameraVideo'), faceFrame: $('faceFrame'),
+    mediaImage: $('mediaImage'), cameraVideo: $('cameraVideo'), cameraCutout: $('cameraCutout'),
+    faceFrame: $('faceFrame'),
     faceResizeHandle: $('faceResizeHandle'), mediaInput: $('mediaInput'), mediaInfo: $('mediaInfo'),
     mediaImportLabel: $('mediaImportLabel'), resultActions: $('resultActions'),
     download: $('download'), discardRecording: $('discardRecording'), status: $('status'),
@@ -27,7 +28,8 @@
     cameraSettingsBtn: $('cameraSettingsBtn'), teleMoveHandle: $('teleMoveHandle'),
     teleResizeHandle: $('teleResizeHandle'), teleScrollState: $('teleScrollState'),
     textUpBtn: $('textUpBtn'), textDownBtn: $('textDownBtn'), textSmallerBtn: $('textSmallerBtn'),
-    textLargerBtn: $('textLargerBtn'), resetLayoutBtn: $('resetLayoutBtn')
+    textLargerBtn: $('textLargerBtn'), resetLayoutBtn: $('resetLayoutBtn'),
+    segmentationEnabled: $('segmentationEnabled'), segmentationLabel: $('segmentationLabel')
   };
 
   const DEFAULT_FACE = { x: .05, y: .05, w: .36, h: .25 };
@@ -46,8 +48,14 @@
     teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
     panStart: null, lastTap: 0,
-    teleRaf: 0, teleStartedAt: 0, teleRunning: false, downloadUrl: ''
+    teleRaf: 0, teleStartedAt: 0, teleRunning: false, downloadUrl: '',
+    segmentationSupported: false, segmentationBusy: false, segmentationReady: false,
+    segmentationRequestId: 0, segmentationTimer: 0, segmentationRenderId: 0,
+    segmentationMask: null, segmentationCaptureCanvas: null
   };
+
+  const SEGMENTATION_INTERVAL_MS = 55;
+  const SEGMENTATION_INPUT_EDGE = 256;
 
   const AUDIO_PROFILES = {
     studio: { label: 'Voix studio HD', echoCancellation: true, noiseSuppression: true, autoGainControl: false, channels: 1, highpass: 70, presence: 1.4, threshold: -18, ratio: 2.4, gain: .8 },
@@ -148,8 +156,141 @@
   function updateMirror() {
     const enabled = state.facingMode === 'user' && state.mirrored;
     elements.cameraVideo.classList.toggle('mirrored', enabled);
+    elements.cameraCutout.classList.toggle('mirrored', enabled);
     elements.mirrorBtn.textContent = `Miroir : ${state.mirrored ? 'ON' : 'OFF'}`;
   }
+
+  const segmentationWanted = () => state.segmentationSupported
+    && elements.segmentationEnabled.checked && hasLiveCamera();
+
+  function updateSegmentationUi() {
+    elements.segmentationEnabled.disabled = !state.segmentationSupported
+      || document.body.classList.contains('recording');
+    if (!state.segmentationSupported) {
+      elements.segmentationLabel.textContent = 'Détourage IA caméra · APK uniquement';
+    } else if (!elements.segmentationEnabled.checked) {
+      elements.segmentationLabel.textContent = 'Détourage IA caméra · OFF';
+    } else if (state.segmentationReady) {
+      elements.segmentationLabel.textContent = 'Détourage IA caméra · fluide';
+    } else {
+      elements.segmentationLabel.textContent = 'Détourage IA caméra · préparation';
+    }
+  }
+
+  function clearCameraCutout() {
+    const context = elements.cameraCutout.getContext('2d');
+    context.clearRect(0, 0, elements.cameraCutout.width, elements.cameraCutout.height);
+    elements.faceFrame.classList.remove('segmentationReady');
+    state.segmentationReady = false;
+    state.segmentationMask = null;
+    updateSegmentationUi();
+  }
+
+  function stopCameraSegmentation() {
+    clearTimeout(state.segmentationTimer);
+    state.segmentationTimer = 0;
+    if (state.segmentationRenderId) cancelAnimationFrame(state.segmentationRenderId);
+    state.segmentationRenderId = 0;
+    state.segmentationBusy = false;
+    state.segmentationRequestId += 1;
+    clearCameraCutout();
+  }
+
+  function scheduleSegmentation(delayMs = SEGMENTATION_INTERVAL_MS) {
+    clearTimeout(state.segmentationTimer);
+    if (!segmentationWanted()) return;
+    state.segmentationTimer = window.setTimeout(requestSegmentationMask, delayMs);
+  }
+
+  function requestSegmentationMask() {
+    if (!segmentationWanted() || state.segmentationBusy || elements.cameraVideo.readyState < 2) {
+      scheduleSegmentation(70);
+      return;
+    }
+    const videoWidth = elements.cameraVideo.videoWidth || 640;
+    const videoHeight = elements.cameraVideo.videoHeight || 480;
+    const scale = Math.min(1, SEGMENTATION_INPUT_EDGE / Math.max(videoWidth, videoHeight));
+    const width = Math.max(2, Math.round(videoWidth * scale));
+    const height = Math.max(2, Math.round(videoHeight * scale));
+    const capture = state.segmentationCaptureCanvas || document.createElement('canvas');
+    state.segmentationCaptureCanvas = capture;
+    if (capture.width !== width || capture.height !== height) {
+      capture.width = width;
+      capture.height = height;
+    }
+    const context = capture.getContext('2d', { alpha: false, desynchronized: true });
+    context.drawImage(elements.cameraVideo, 0, 0, width, height);
+    const encoded = capture.toDataURL('image/jpeg', .72).split(',')[1] || '';
+    const requestId = ++state.segmentationRequestId;
+    try {
+      state.segmentationBusy = window.AndroidBridge.segmentCameraFrame(encoded, requestId) === true;
+    } catch (_) {
+      state.segmentationBusy = false;
+    }
+    if (!state.segmentationBusy) scheduleSegmentation(90);
+  }
+
+  function renderSegmentedCamera() {
+    if (!segmentationWanted()) {
+      state.segmentationRenderId = 0;
+      return;
+    }
+    const video = elements.cameraVideo;
+    const canvas = elements.cameraCutout;
+    if (video.readyState >= 2 && video.videoWidth && video.videoHeight) {
+      const maxEdge = elements.videoQuality.value === '1080' ? 960 : 720;
+      const scale = Math.min(1, maxEdge / Math.max(video.videoWidth, video.videoHeight));
+      const width = Math.max(2, Math.round(video.videoWidth * scale));
+      const height = Math.max(2, Math.round(video.videoHeight * scale));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      const context = canvas.getContext('2d', { alpha: true, desynchronized: true });
+      context.globalCompositeOperation = 'copy';
+      context.drawImage(video, 0, 0, width, height);
+      if (state.segmentationMask) {
+        context.globalCompositeOperation = 'destination-in';
+        context.drawImage(state.segmentationMask, 0, 0, width, height);
+        context.globalCompositeOperation = 'source-over';
+        if (!state.segmentationReady) {
+          state.segmentationReady = true;
+          elements.faceFrame.classList.add('segmentationReady');
+          updateSegmentationUi();
+        }
+      }
+    }
+    state.segmentationRenderId = requestAnimationFrame(renderSegmentedCamera);
+  }
+
+  function startCameraSegmentation() {
+    stopCameraSegmentation();
+    if (!segmentationWanted()) return;
+    state.segmentationRenderId = requestAnimationFrame(renderSegmentedCamera);
+    scheduleSegmentation(0);
+    updateSegmentationUi();
+  }
+
+  window.GrokSegmentation = {
+    onMask(requestId, dataUrl) {
+      if (requestId !== state.segmentationRequestId || !segmentationWanted()) return;
+      state.segmentationBusy = false;
+      const mask = new Image();
+      mask.onload = () => {
+        if (requestId === state.segmentationRequestId && segmentationWanted()) {
+          state.segmentationMask = mask;
+        }
+        scheduleSegmentation();
+      };
+      mask.onerror = () => scheduleSegmentation(150);
+      mask.src = dataUrl;
+    },
+    onError(requestId) {
+      if (requestId !== state.segmentationRequestId) return;
+      state.segmentationBusy = false;
+      scheduleSegmentation(180);
+    }
+  };
 
   function updateTabs() {
     elements.liveTab.classList.toggle('active', state.mode === 'live');
@@ -438,6 +579,7 @@
   }
 
   async function stopCameraVideo() {
+    stopCameraSegmentation();
     state.cameraStream?.getTracks().forEach((track) => track.stop());
     state.cameraStream = null;
     elements.cameraVideo.srcObject = null;
@@ -549,6 +691,7 @@
     await elements.cameraVideo.play();
     elements.cameraBtn.textContent = 'Caméra activée';
     updateTabs();
+    startCameraSegmentation();
   }
 
   async function startCamera() {
@@ -1088,8 +1231,8 @@
   }
 
   function drawCovered(context, source, x, y, width, height, mirror = false) {
-    const sourceWidth = source.videoWidth || source.naturalWidth || width;
-    const sourceHeight = source.videoHeight || source.naturalHeight || height;
+    const sourceWidth = source.videoWidth || source.naturalWidth || source.width || width;
+    const sourceHeight = source.videoHeight || source.naturalHeight || source.height || height;
     const scale = Math.max(width / sourceWidth, height / sourceHeight);
     const cropWidth = width / scale;
     const cropHeight = height / scale;
@@ -1122,8 +1265,10 @@
     context.fillStyle = '#000';
     context.fillRect(0, 0, canvas.width, canvas.height);
     const mirrorCamera = state.facingMode === 'user' && state.mirrored;
+    const cameraSource = state.segmentationReady
+      ? elements.cameraCutout : elements.cameraVideo;
     if (state.mode === 'live' && elements.cameraVideo.readyState >= 2) {
-      drawCovered(context, elements.cameraVideo, 0, 0, canvas.width, canvas.height, mirrorCamera);
+      drawCovered(context, cameraSource, 0, 0, canvas.width, canvas.height, mirrorCamera);
       return;
     }
     drawImported(context, canvas);
@@ -1132,10 +1277,12 @@
       const y = Math.round(state.face.y * canvas.height);
       const width = Math.round(state.face.w * canvas.width);
       const height = Math.round(state.face.h * canvas.height);
-      drawCovered(context, elements.cameraVideo, x, y, width, height, mirrorCamera);
-      context.lineWidth = Math.max(4, canvas.width * .006);
-      context.strokeStyle = '#fff';
-      context.strokeRect(x, y, width, height);
+      drawCovered(context, cameraSource, x, y, width, height, mirrorCamera);
+      if (!state.segmentationReady) {
+        context.lineWidth = Math.max(4, canvas.width * .006);
+        context.strokeStyle = '#fff';
+        context.strokeRect(x, y, width, height);
+      }
     }
   }
 
@@ -1208,7 +1355,8 @@
       elements.textDownBtn, elements.textSmallerBtn, elements.textLargerBtn,
       elements.resetLayoutBtn, elements.includeMicrophone, elements.includeMediaAudio,
       elements.micVolumeRange, elements.mediaVolumeRange, elements.activateMicBtn,
-      elements.faceFormatVertical, elements.faceFormatHorizontal
+      elements.faceFormatVertical, elements.faceFormatHorizontal,
+      elements.segmentationEnabled
     ].forEach((item) => { item.disabled = recording; });
     if (!recording) {
       displayImportedMedia();
@@ -1490,6 +1638,7 @@
       localStorage.setItem('grokTeleprompterAudio', elements.audioMode.value);
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
       localStorage.setItem('grokTeleprompterFaceOrientation', selectedFaceOrientation());
+      localStorage.setItem('grokTeleprompterSegmentation', String(elements.segmentationEnabled.checked));
       localStorage.setItem('grokTeleprompterSpeed', elements.speedRange.value);
       localStorage.setItem('grokTeleprompterSize', elements.sizeRange.value);
       localStorage.setItem('grokTeleprompterMixer', JSON.stringify({
@@ -1524,6 +1673,7 @@
       const audio = localStorage.getItem('grokTeleprompterAudio');
       const quality = localStorage.getItem('grokTeleprompterQuality');
       const faceOrientation = localStorage.getItem('grokTeleprompterFaceOrientation');
+      const segmentation = localStorage.getItem('grokTeleprompterSegmentation');
       const speed = localStorage.getItem('grokTeleprompterSpeed');
       const size = localStorage.getItem('grokTeleprompterSize');
       const layout = JSON.parse(localStorage.getItem('grokTeleprompterLayout') || 'null');
@@ -1533,6 +1683,7 @@
       if (quality === '720' || quality === '1080') elements.videoQuality.value = quality;
       elements.faceFormatHorizontal.checked = faceOrientation === 'horizontal';
       elements.faceFormatVertical.checked = faceOrientation !== 'horizontal';
+      if (segmentation === 'false') elements.segmentationEnabled.checked = false;
       if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
       if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
       if (mixer) {
@@ -1600,6 +1751,15 @@
     state.mirrored = !state.mirrored;
     updateMirror();
     saveScript();
+  });
+  elements.segmentationEnabled.addEventListener('change', () => {
+    if (elements.segmentationEnabled.checked) startCameraSegmentation();
+    else stopCameraSegmentation();
+    updateSegmentationUi();
+    saveScript();
+    showStatus(elements.segmentationEnabled.checked
+      ? 'Détourage IA de la caméra activé'
+      : 'Détourage caméra désactivé');
   });
   elements.audioMode.addEventListener('change', async () => {
     saveScript();
@@ -1998,6 +2158,12 @@
   });
 
   restorePreferences();
+  try {
+    state.segmentationSupported = window.AndroidBridge?.supportsCameraSegmentation?.() === true;
+  } catch (_) {
+    state.segmentationSupported = false;
+  }
+  updateSegmentationUi();
   setAspect(9, 16);
   updateTabs();
   resizeStage();

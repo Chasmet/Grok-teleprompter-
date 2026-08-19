@@ -13,6 +13,8 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 - Mode vidéo ou image importée.
 - Téléprompteur disponible en mode vidéo importée pour enregistrer une voix off sans caméra ; le texte reste un guide à l’écran et n’est jamais incrusté dans le fichier final.
 - Mode vidéo + facecam déplaçable et redimensionnable.
+- Détourage IA natif de la caméra dans les modes Live et Facecam ; les médias importés restent strictement intacts.
+- Caméra affichée en continu à 30 i/s pendant que le masque IA est calculé séparément, pour éviter que l’image se fige.
 - Facecam tactile : glisser, pincer ou tirer la poignée de redimensionnement.
 - Orientation de la fenêtre facecam au choix : verticale 9:16 ou paysage 16:9, sans modifier la vidéo de fond ni le fichier final.
 - Téléprompteur tactile : position et cadre réglables directement dans l’aperçu.
@@ -61,6 +63,7 @@ L’APK contient l’application web dans ses propres ressources et fonctionne s
 - un raccord adaptatif de 1 ms uniquement lorsqu’un saut anormal est détecté à une frontière de trame ;
 - un seul contexte audio du micro natif jusqu’à l’encodeur AAC, y compris lorsque le son du média est mélangé ;
 - une jauge limitée à 10 mesures par seconde et un rendu vidéo limité à 30 images par seconde pour protéger le thread audio ;
+- un masque de silhouette natif à faible résolution, affiné hors du thread d’interface puis appliqué par le canvas accéléré ;
 - la source Android `CAMCORDER` exclusivement : aucun micro WebView, `MIC`, `UNPROCESSED` ou reconnaissance vocale dans l’APK ;
 - une aide persistante et un accès direct aux autorisations Android en cas d’échec ;
 - l’enregistrement par blocs des grosses vidéos, sans charger tout le fichier en mémoire native ;
@@ -77,7 +80,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.12.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.13.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 

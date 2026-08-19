@@ -56,7 +56,12 @@ button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .stage .mirrored { transform: scaleX(-1); }
 .empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 18px; text-align: center; color: #94a3b8; font-weight: 900; line-height: 1.5; }
 .faceFrame { position: absolute; z-index: 10; overflow: hidden; border: 3px solid #fff; border-radius: 14px; background: #111; box-shadow: 0 8px 26px rgba(0,0,0,.7); touch-action: none; user-select: none; }
-.faceFrame video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #111; pointer-events: none; }
+.faceFrame video, .faceFrame .cameraCutout { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.faceFrame video { background: #111; }
+.cameraCutout { display: none; background: transparent; }
+.faceFrame.segmentationReady { border-color: transparent; background: transparent; box-shadow: none; }
+.faceFrame.segmentationReady video { visibility: hidden; }
+.faceFrame.segmentationReady .cameraCutout { display: block; }
 .faceFrame.liveCamera { inset: 0 !important; width: 100% !important; height: 100% !important; border: 0; border-radius: 0; box-shadow: none; touch-action: auto; }
 .faceFrame.liveCamera video { object-fit: cover; }
 .moveBadge { position: absolute; left: 7px; top: 7px; z-index: 4; display: grid; width: 28px; height: 28px; place-items: center; border-radius: 50%; background: rgba(0,0,0,.68); color: #fff; font-size: 17px; pointer-events: none; }

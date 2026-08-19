@@ -167,6 +167,16 @@ test('imported media stays automatic and only the facecam gets a selectable aspe
   assert.match(html, /⬇ Télécharger la vidéo/);
 });
 
+test('native segmentation affects only the live camera and never imported media', () => {
+  assert.match(html, /id="cameraCutout"/);
+  assert.match(html, /id="segmentationEnabled"/);
+  assert.match(android, /segmentCameraFrame\(String jpegBase64, int requestId\)/);
+  assert.match(script, /window\.GrokSegmentation/);
+  assert.match(script, /const cameraSource = state\.segmentationReady/);
+  assert.match(script, /drawImported\(context, canvas\)/);
+  assert.doesNotMatch(script, /segmentCameraFrame\([^\n]*mediaVideo/);
+});
+
 test('the sound meter cannot add a second audio path while recording', () => {
   assert.match(script, /state\.nativeMicrophone\?\.active && stream === state\.micOnlyStream/);
   assert.match(script, /native\.lastMeterAt >= 100/);

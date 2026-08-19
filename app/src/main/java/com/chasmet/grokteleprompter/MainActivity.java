@@ -54,6 +54,7 @@ public final class MainActivity extends Activity {
     private PermissionRequest pendingWebPermission;
     private ValueCallback<Uri[]> pendingFileChooser;
     private AndroidBridge androidBridge;
+    private NativeCameraSegmenter nativeCameraSegmenter;
     private OnBackInvokedCallback backCallback;
 
     @SuppressLint({"SetJavaScriptEnabled", "JavascriptInterface"})
@@ -138,7 +139,8 @@ public final class MainActivity extends Activity {
             }
         });
 
-        androidBridge = new AndroidBridge(getContentResolver());
+        nativeCameraSegmenter = new NativeCameraSegmenter(webView);
+        androidBridge = new AndroidBridge(getContentResolver(), nativeCameraSegmenter);
         webView.addJavascriptInterface(androidBridge, "AndroidBridge");
         webView.loadUrl(START_URL);
 
@@ -274,14 +276,26 @@ public final class MainActivity extends Activity {
         // 10 ms, sans fraction résiduelle aux frontières WebRTC/MediaRecorder.
         private static final int NATIVE_MIC_CHUNK_BYTES = 3840;
         private final ContentResolver resolver;
+        private final NativeCameraSegmenter cameraSegmenter;
         private final Map<String, SaveSession> sessions = new ConcurrentHashMap<>();
         private final Object nativeMicrophoneLock = new Object();
         private volatile boolean nativeMicrophoneRunning;
         private AudioRecord nativeAudioRecord;
         private Thread nativeAudioThread;
 
-        AndroidBridge(ContentResolver resolver) {
+        AndroidBridge(ContentResolver resolver, NativeCameraSegmenter cameraSegmenter) {
             this.resolver = resolver;
+            this.cameraSegmenter = cameraSegmenter;
+        }
+
+        @JavascriptInterface
+        public boolean supportsCameraSegmentation() {
+            return true;
+        }
+
+        @JavascriptInterface
+        public boolean segmentCameraFrame(String jpegBase64, int requestId) {
+            return cameraSegmenter.submit(jpegBase64, requestId);
         }
 
         @JavascriptInterface
@@ -557,6 +571,7 @@ public final class MainActivity extends Activity {
 
         void cancelAll() {
             stopNativeMicrophone();
+            cameraSegmenter.close();
             for (String sessionId : new ArrayList<>(sessions.keySet())) cancelSave(sessionId);
         }
 
