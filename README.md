@@ -9,6 +9,11 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 
 ## Fonctions
 
+- Écran d’entrée restructuré avec deux grands espaces indépendants : `CLASSIQUE` conserve l’application existante et `FOND VERT` ouvre le studio de détourage dédié.
+- En mode `CLASSIQUE`, les trois parcours historiques (caméra live, média importé, vidéo + facecam), leurs réglages et leurs enregistrements restent disponibles.
+- En mode `FOND VERT`, la caméra détourée est obligatoire et ne peut jamais être remplacée par l’image caméra brute, ni dans l’aperçu ni dans la vidéo enregistrée.
+- Décor vert uni par défaut, ou import d’une image/vidéo utilisée intacte comme arrière-plan ; seul le flux caméra est détouré.
+- Téléprompteur complet en mode fond vert, avec silhouette et texte déplaçables/redimensionnables séparément, y compris pendant REC.
 - Mode caméra live vertical ; les vidéos et images importées conservent automatiquement leur propre format.
 - Mode vidéo ou image importée.
 - Téléprompteur disponible en mode vidéo importée pour enregistrer une voix off sans caméra ; le texte reste un guide à l’écran et n’est jamais incrusté dans le fichier final.
@@ -83,7 +88,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.14.1.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.15.0.apk` comme artefact téléchargeable.
 
 ## Structure utile
 

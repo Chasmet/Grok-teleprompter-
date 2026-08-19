@@ -16,6 +16,46 @@ button, input, select, textarea { font: inherit; }
 button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 .app { width: 100%; min-height: 100dvh; }
 
+.studioModeSwitcher {
+  padding: max(12px, env(safe-area-inset-top)) 12px 12px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+  background: linear-gradient(180deg,#091630,#071126);
+}
+.studioModeTitle { margin-bottom: 9px; color: #bfdbfe; font-size: 13px; font-weight: 900; text-align: center; letter-spacing: .08em; }
+.studioModeTabs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.studioModeButton {
+  min-height: 94px;
+  padding: 12px 7px;
+  border: 2px solid rgba(255,255,255,.14);
+  border-radius: 18px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  background: #1e293b;
+  color: #aebbd0;
+  box-shadow: 0 8px 22px rgba(0,0,0,.22);
+}
+.studioModeButton strong { font-size: 18px; font-weight: 1000; }
+.studioModeButton span { font-size: 11px; font-weight: 800; }
+.studioModeButton.active { border-color: #60a5fa; background: linear-gradient(135deg,#1d4ed8,#6d28d9); color: #fff; box-shadow: 0 0 0 3px rgba(96,165,250,.17); }
+.studioModeButton.green.active { border-color: #34d399; background: linear-gradient(135deg,#047857,#10b981); box-shadow: 0 0 0 3px rgba(52,211,153,.18); }
+.studioModeSwitcher p { margin-top: 9px; color: #9fb5d5; font-size: 11px; font-weight: 800; line-height: 1.35; text-align: center; }
+
+.greenScreenPanel { display: none; padding: 12px; border-bottom: 2px solid #10b981; background: #071d18; }
+.greenScreenPanel > div:first-child { display: grid; gap: 4px; text-align: center; }
+.greenScreenPanel strong { color: #a7f3d0; font-size: 16px; }
+.greenScreenPanel span { color: #9fb5b1; font-size: 11px; font-weight: 800; line-height: 1.35; }
+.greenScreenActions { display: grid; grid-template-columns: 1.4fr 1fr; gap: 8px; margin-top: 10px; }
+.greenImportButton, .greenResetButton { min-height: 50px; padding: 8px; border-radius: 12px; display: grid; place-items: center; color: #fff; font-size: 12px; font-weight: 900; text-align: center; }
+.greenImportButton { border: 1px solid #34d399; background: #065f46; }
+.greenResetButton { border: 1px solid rgba(255,255,255,.18); background: #1e293b; }
+body[data-studio-mode="green"] .top { display: none; }
+body[data-studio-mode="green"] .greenScreenPanel { display: block; }
+body[data-studio-mode="green"] .stage { background: #00b140; }
+body[data-studio-mode="green"] .faceFrame:not(.segmentationReady) { border-style: dashed; background: transparent; box-shadow: none; }
+body[data-studio-mode="green"] .faceFrame:not(.segmentationReady) video { visibility: hidden; }
+body[data-studio-mode="green"] #segmentationSetting { border: 1px solid rgba(52,211,153,.55); background: rgba(6,95,70,.42); }
+
 .top {
   position: sticky;
   top: 0;
@@ -182,6 +222,7 @@ textarea { width: calc(100% - 24px); min-height: 130px; margin: 7px 12px 0; padd
 .hide { display: none !important; }
 
 body.recording .top, body.recording .controls, body.recording .settings, body.recording .audioMixer, body.recording .formatPicker, body.recording textarea { opacity: .62; pointer-events: none; }
+body.recording .studioModeSwitcher, body.recording .greenScreenPanel { opacity: .62; pointer-events: none; }
 body.recording .teleprompter { pointer-events: none; border-color: transparent; }
 body.recording .teleMoveHandle, body.recording .teleResizeHandle { display: none; }
 body.recording .faceFrame .resizeHandle, body.recording .faceFrame .moveBadge { opacity: .42; }

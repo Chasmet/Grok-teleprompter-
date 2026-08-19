@@ -29,21 +29,27 @@
     teleResizeHandle: $('teleResizeHandle'), teleScrollState: $('teleScrollState'),
     textUpBtn: $('textUpBtn'), textDownBtn: $('textDownBtn'), textSmallerBtn: $('textSmallerBtn'),
     textLargerBtn: $('textLargerBtn'), resetLayoutBtn: $('resetLayoutBtn'),
-    segmentationEnabled: $('segmentationEnabled'), segmentationLabel: $('segmentationLabel')
+    segmentationEnabled: $('segmentationEnabled'), segmentationLabel: $('segmentationLabel'),
+    classicStudioTab: $('classicStudioTab'), greenStudioTab: $('greenStudioTab'),
+    studioModeDescription: $('studioModeDescription'), greenImportLabel: $('greenImportLabel'),
+    greenResetBackground: $('greenResetBackground')
   };
 
   const DEFAULT_FACE = { x: .05, y: .05, w: .36, h: .25 };
+  const DEFAULT_GREEN_FACE = { x: .12, y: .20, w: .76, h: .76 };
   const DEFAULT_TELE_BOX = { x: .05, y: .09, w: .90, h: .72 };
 
   const state = {
-    mode: 'facecam', mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '', mediaName: '',
+    studioMode: 'classic', mode: 'facecam', classicMode: 'facecam',
+    mediaType: '', mediaWidth: 720, mediaHeight: 1280, mediaUrl: '', mediaName: '',
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
     recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
     nativeMicrophone: null,
     recordingStarting: false, stopRequested: false, stopReason: '', recordingSaved: true,
     facingMode: 'user', mirrored: true,
-    face: { ...DEFAULT_FACE }, facePointers: new Map(), faceGesture: null,
+    face: { ...DEFAULT_FACE }, classicFace: { ...DEFAULT_FACE }, greenFace: { ...DEFAULT_GREEN_FACE },
+    classicSegmentationEnabled: true, facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
     teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
@@ -160,13 +166,24 @@
     elements.mirrorBtn.textContent = `Miroir : ${state.mirrored ? 'ON' : 'OFF'}`;
   }
 
+  const greenStudioActive = () => state.studioMode === 'green';
   const segmentationWanted = () => state.segmentationSupported
-    && elements.segmentationEnabled.checked && hasLiveCamera();
+    && (greenStudioActive() || elements.segmentationEnabled.checked) && hasLiveCamera();
+  const cameraCutoutRequired = () => hasLiveCamera()
+    && (greenStudioActive() || segmentationWanted());
 
   function updateSegmentationUi() {
-    elements.segmentationEnabled.disabled = !state.segmentationSupported
-      || document.body.classList.contains('recording');
-    if (!state.segmentationSupported) {
+    elements.segmentationEnabled.checked = greenStudioActive()
+      ? true : state.classicSegmentationEnabled;
+    elements.segmentationEnabled.disabled = greenStudioActive()
+      || !state.segmentationSupported || document.body.classList.contains('recording');
+    if (greenStudioActive() && !state.segmentationSupported) {
+      elements.segmentationLabel.textContent = 'Fond vert IA · disponible dans l’APK';
+    } else if (greenStudioActive() && state.segmentationReady) {
+      elements.segmentationLabel.textContent = 'Fond vert IA · silhouette prête';
+    } else if (greenStudioActive()) {
+      elements.segmentationLabel.textContent = 'Fond vert IA · obligatoire · préparation';
+    } else if (!state.segmentationSupported) {
       elements.segmentationLabel.textContent = 'Détourage IA caméra · APK uniquement';
     } else if (!elements.segmentationEnabled.checked) {
       elements.segmentationLabel.textContent = 'Détourage IA caméra · OFF';
@@ -292,6 +309,68 @@
     }
   };
 
+  function updateStudioModeUi() {
+    const green = greenStudioActive();
+    document.body.dataset.studioMode = green ? 'green' : 'classic';
+    elements.classicStudioTab.classList.toggle('active', !green);
+    elements.greenStudioTab.classList.toggle('active', green);
+    elements.studioModeDescription.textContent = green
+      ? 'Téléprompteur + silhouette détourée + décor vert, image ou vidéo.'
+      : 'Tous les modes actuels restent disponibles sans changement.';
+    elements.greenImportLabel.textContent = state.mediaType
+      ? 'Changer le décor' : 'Choisir une image ou vidéo';
+    elements.empty.innerHTML = green
+      ? 'Fond vert prêt<br>Active la caméra ou importe un décor'
+      : 'Importe une vidéo ou une image<br>comme dans CapCut';
+    elements.stage.style.backgroundColor = green ? '#00b140' : '#000000';
+  }
+
+  function setStudioMode(mode, announce = true) {
+    if (mode !== 'classic' && mode !== 'green') return;
+    if (state.recorder && state.recorder.state !== 'inactive') return;
+    if (state.studioMode === mode) {
+      updateStudioModeUi();
+      return;
+    }
+
+    stopTeleprompter(true);
+    state.viewPointers.clear();
+    if (state.studioMode === 'green') {
+      state.greenFace = { ...state.face };
+    } else {
+      state.classicFace = { ...state.face };
+      state.classicMode = state.mode;
+      state.classicSegmentationEnabled = elements.segmentationEnabled.checked;
+    }
+
+    state.studioMode = mode;
+    if (mode === 'green') {
+      state.mode = 'facecam';
+      state.face = { ...state.greenFace };
+      elements.segmentationEnabled.checked = true;
+      if (!state.mediaType) setAspect(9, 16);
+    } else {
+      state.mode = state.classicMode || 'facecam';
+      state.face = { ...state.classicFace };
+      elements.segmentationEnabled.checked = state.classicSegmentationEnabled;
+    }
+
+    applyFaceAspect();
+    updateStudioModeUi();
+    displayImportedMedia();
+    updateTabs();
+    updateSegmentationUi();
+    if (hasLiveCamera()) {
+      if (segmentationWanted()) startCameraSegmentation();
+      else stopCameraSegmentation();
+    }
+    updateTeleText(true);
+    updateMediaInfo(state.mediaType === 'video' ? elements.mediaVideo.duration : 0);
+    if (announce) showStatus(mode === 'green'
+      ? 'Studio Fond Vert activé · ajoute ton décor puis active la caméra'
+      : 'Studio Classique activé');
+  }
+
   function updateTabs() {
     elements.liveTab.classList.toggle('active', state.mode === 'live');
     elements.mediaTab.classList.toggle('active', state.mode === 'media');
@@ -312,7 +391,9 @@
 
   function setMode(mode) {
     if (state.recorder && state.recorder.state !== 'inactive') return;
+    if (greenStudioActive()) return;
     state.mode = mode;
+    state.classicMode = mode;
     state.viewPointers.clear();
     stopTeleprompter(true);
     if (mode === 'media') {
@@ -448,7 +529,11 @@
     elements.mediaVideo.classList.toggle('hide', state.mediaType !== 'video');
     elements.playBtn.disabled = state.mediaType !== 'video';
     elements.pauseBtn.disabled = state.mediaType !== 'video';
-    elements.mediaImportLabel.textContent = state.mediaType ? 'Changer le média' : 'Importer un média';
+    elements.mediaImportLabel.textContent = greenStudioActive()
+      ? (state.mediaType ? 'Changer le décor' : 'Importer un décor')
+      : (state.mediaType ? 'Changer le média' : 'Importer un média');
+    elements.greenImportLabel.textContent = state.mediaType
+      ? 'Changer le décor' : 'Choisir une image ou vidéo';
     updateEmptyVisibility();
   }
 
@@ -460,13 +545,16 @@
 
   function updateMediaInfo(duration = 0) {
     if (!state.mediaType) {
-      elements.mediaInfo.textContent = 'Aucun média importé';
+      elements.mediaInfo.textContent = greenStudioActive()
+        ? 'Décor vert prêt'
+        : 'Aucun média importé';
       return;
     }
     const type = state.mediaType === 'video' ? 'Vidéo' : 'Image';
+    const displayType = greenStudioActive() ? `Décor ${type.toLowerCase()}` : type;
     const dimensions = `${state.mediaWidth} × ${state.mediaHeight}`;
     const formattedDuration = state.mediaType === 'video' ? formatDuration(duration) : '';
-    elements.mediaInfo.textContent = [type, state.mediaName, dimensions, formattedDuration]
+    elements.mediaInfo.textContent = [displayType, state.mediaName, dimensions, formattedDuration]
       .filter(Boolean)
       .join(' · ');
   }
@@ -489,7 +577,8 @@
 
   function updateEmptyVisibility() {
     const promptVisible = teleHasText();
-    const shouldHide = state.mode === 'live' || Boolean(state.mediaType) || promptVisible || hasLiveCamera();
+    const shouldHide = greenStudioActive() || state.mode === 'live'
+      || Boolean(state.mediaType) || promptVisible || hasLiveCamera();
     elements.empty.classList.toggle('hide', shouldHide);
   }
 
@@ -1262,10 +1351,10 @@
   }
 
   function drawFrame(context, canvas) {
-    context.fillStyle = '#000';
+    context.fillStyle = greenStudioActive() ? '#00b140' : '#000';
     context.fillRect(0, 0, canvas.width, canvas.height);
     const mirrorCamera = state.facingMode === 'user' && state.mirrored;
-    const cutoutRequired = segmentationWanted();
+    const cutoutRequired = cameraCutoutRequired();
     const cameraSource = cutoutRequired
       ? (state.segmentationReady ? elements.cameraCutout : null)
       : elements.cameraVideo;
@@ -1286,13 +1375,14 @@
   }
 
   async function waitForCameraCutout(timeoutMs = 4500) {
-    if (!segmentationWanted() || state.segmentationReady) return true;
+    if (!cameraCutoutRequired() || state.segmentationReady) return true;
+    if (!segmentationWanted()) return false;
     const deadline = performance.now() + timeoutMs;
-    while (segmentationWanted() && !state.segmentationReady
+    while (cameraCutoutRequired() && segmentationWanted() && !state.segmentationReady
       && performance.now() < deadline) {
       await delay(50);
     }
-    return !segmentationWanted() || state.segmentationReady;
+    return !cameraCutoutRequired() || state.segmentationReady;
   }
 
   function outputSize() {
@@ -1358,6 +1448,7 @@
     elements.recBtn.textContent = recording ? '● Tournage' : '● Filmer';
     elements.stopBtn.disabled = !recording;
     [
+      elements.classicStudioTab, elements.greenStudioTab, elements.greenResetBackground,
       elements.liveTab, elements.mediaTab, elements.faceTab, elements.mediaInput,
       elements.cameraBtn, elements.flipBtn, elements.mirrorBtn, elements.audioMode,
       elements.videoQuality, elements.playBtn, elements.pauseBtn, elements.textUpBtn,
@@ -1372,6 +1463,7 @@
       updateTabs();
       updateMixerUi();
     }
+    updateSegmentationUi();
   }
 
   function updateTimer() {
@@ -1390,8 +1482,16 @@
       showStatus('Enregistrement non compatible avec ce navigateur', true, 5000);
       return;
     }
+    if (greenStudioActive() && !state.segmentationSupported) {
+      showStatus('Le mode Fond Vert avec détourage est disponible dans l’APK Android', true, 5200);
+      return;
+    }
+    if (greenStudioActive() && !hasLiveCamera()) {
+      showStatus('Active d’abord la caméra du studio Fond Vert', true);
+      return;
+    }
     if (state.mode === 'live' && !hasLiveCamera()) { showStatus('Active d’abord la caméra', true); return; }
-    if (state.mode !== 'live' && !state.mediaType) { showStatus('Importe d’abord une vidéo ou une image', true); return; }
+    if (!greenStudioActive() && state.mode !== 'live' && !state.mediaType) { showStatus('Importe d’abord une vidéo ou une image', true); return; }
     if (state.mode === 'facecam' && !hasLiveCamera()) { showStatus('Active d’abord la caméra', true); return; }
 
     state.recordingStarting = true;
@@ -1406,7 +1506,7 @@
     state.stopReason = '';
 
     if ((state.mode === 'live' || state.mode === 'facecam')
-      && segmentationWanted() && !await waitForCameraCutout()) {
+      && cameraCutoutRequired() && !await waitForCameraCutout()) {
       showStatus('Détourage encore en préparation · réessaie dans un instant', true, 5200);
       return;
     }
@@ -1649,6 +1749,8 @@
 
   function saveScript() {
     try {
+      if (greenStudioActive()) state.greenFace = { ...state.face };
+      else state.classicFace = { ...state.face };
       localStorage.setItem('grokTeleprompterScript', elements.scriptInput.value);
       localStorage.setItem('grokTeleprompterAudio', elements.audioMode.value);
       localStorage.setItem('grokTeleprompterQuality', elements.videoQuality.value);
@@ -1663,7 +1765,9 @@
         mediaVolume: Math.round(mediaVolume() * 100)
       }));
       localStorage.setItem('grokTeleprompterLayout', JSON.stringify({
-        face: state.face,
+        face: state.classicFace,
+        classicFace: state.classicFace,
+        greenFace: state.greenFace,
         teleBox: state.teleBox,
         mirrored: state.mirrored
       }));
@@ -1699,6 +1803,7 @@
       elements.faceFormatHorizontal.checked = faceOrientation === 'horizontal';
       elements.faceFormatVertical.checked = faceOrientation !== 'horizontal';
       if (segmentation === 'false') elements.segmentationEnabled.checked = false;
+      state.classicSegmentationEnabled = elements.segmentationEnabled.checked;
       if (speed) elements.speedRange.value = String(clamp(Number(speed), 1, 10));
       if (size) elements.sizeRange.value = String(clamp(Number(size), 20, 70));
       if (mixer) {
@@ -1709,7 +1814,9 @@
         if (Number.isFinite(savedMicVolume)) elements.micVolumeRange.value = String(clamp(savedMicVolume, 0, 200));
         if (Number.isFinite(savedMediaVolume)) elements.mediaVolumeRange.value = String(clamp(savedMediaVolume, 0, 100));
       }
-      state.face = restoreBox(layout?.face, DEFAULT_FACE, .12, .10);
+      state.classicFace = restoreBox(layout?.classicFace || layout?.face, DEFAULT_FACE, .12, .10);
+      state.greenFace = restoreBox(layout?.greenFace, DEFAULT_GREEN_FACE, .12, .10);
+      state.face = { ...state.classicFace };
       state.teleBox = restoreBox(layout?.teleBox, DEFAULT_TELE_BOX, .35, .24);
       if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;
     } catch (_) {}
@@ -1718,6 +1825,12 @@
   elements.liveTab.addEventListener('click', () => setMode('live'));
   elements.mediaTab.addEventListener('click', () => setMode('media'));
   elements.faceTab.addEventListener('click', () => setMode('facecam'));
+  elements.classicStudioTab.addEventListener('click', () => setStudioMode('classic'));
+  elements.greenStudioTab.addEventListener('click', () => setStudioMode('green'));
+  elements.greenResetBackground.addEventListener('click', () => {
+    clearImportedMedia();
+    showStatus('Décor vert rétabli');
+  });
   elements.cameraBtn.addEventListener('click', startCamera);
   elements.retryCameraBtn.addEventListener('click', startCamera);
   function openAndroidAppSettings(retryCamera = false) {
@@ -1768,6 +1881,13 @@
     saveScript();
   });
   elements.segmentationEnabled.addEventListener('change', () => {
+    if (greenStudioActive()) {
+      elements.segmentationEnabled.checked = true;
+      updateSegmentationUi();
+      showStatus('Le détourage reste obligatoire en mode Fond Vert');
+      return;
+    }
+    state.classicSegmentationEnabled = elements.segmentationEnabled.checked;
     if (elements.segmentationEnabled.checked) startCameraSegmentation();
     else stopCameraSegmentation();
     updateSegmentationUi();
@@ -1849,7 +1969,9 @@
   elements.textSmallerBtn.addEventListener('click', () => applyTeleFont(Number(elements.sizeRange.value) - 3));
   elements.textLargerBtn.addEventListener('click', () => applyTeleFont(Number(elements.sizeRange.value) + 3));
   elements.resetLayoutBtn.addEventListener('click', () => {
-    state.face = { ...DEFAULT_FACE };
+    state.face = greenStudioActive() ? { ...DEFAULT_GREEN_FACE } : { ...DEFAULT_FACE };
+    if (greenStudioActive()) state.greenFace = { ...state.face };
+    else state.classicFace = { ...state.face };
     state.teleBox = { ...DEFAULT_TELE_BOX };
     elements.sizeRange.value = '36';
     layoutFace();
@@ -1858,6 +1980,27 @@
     saveScript();
     showStatus('Positions réinitialisées');
   });
+
+  function clearImportedMedia() {
+    if (state.recorder && state.recorder.state !== 'inactive') return;
+    const previousUrl = state.mediaUrl;
+    state.mediaUrl = '';
+    state.mediaType = '';
+    state.mediaName = '';
+    elements.mediaVideo.pause();
+    elements.mediaImage.onload = null;
+    elements.mediaImage.onerror = null;
+    elements.mediaVideo.onloadedmetadata = null;
+    elements.mediaVideo.onerror = null;
+    elements.mediaVideo.removeAttribute('src');
+    elements.mediaVideo.load();
+    elements.mediaImage.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+    if (previousUrl) URL.revokeObjectURL(previousUrl);
+    resetMediaView();
+    setAspect(9, 16);
+    displayImportedMedia();
+    updateMediaInfo();
+  }
 
   function failMediaImport(message) {
     const failedUrl = state.mediaUrl;
@@ -2178,6 +2321,7 @@
   } catch (_) {
     state.segmentationSupported = false;
   }
+  updateStudioModeUi();
   updateSegmentationUi();
   setAspect(9, 16);
   updateTabs();

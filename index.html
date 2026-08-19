@@ -18,11 +18,37 @@
   <div class="app">
     <div id="status" class="status" role="status" aria-live="polite"></div>
 
+    <section class="studioModeSwitcher" aria-label="Choix du studio">
+      <div class="studioModeTitle">CHOISIS TON STUDIO</div>
+      <div class="studioModeTabs">
+        <button id="classicStudioTab" class="studioModeButton active" type="button">
+          <strong>CLASSIQUE</strong>
+          <span>Téléprompteur actuel</span>
+        </button>
+        <button id="greenStudioTab" class="studioModeButton green" type="button">
+          <strong>FOND VERT</strong>
+          <span>Silhouette + décor</span>
+        </button>
+      </div>
+      <p id="studioModeDescription">Tous les modes actuels restent disponibles.</p>
+    </section>
+
     <header class="top" aria-label="Modes de tournage">
       <button id="liveTab" class="tab" type="button">Mode Live</button>
       <button id="mediaTab" class="tab" type="button">Vidéo importée</button>
       <button id="faceTab" class="tab active" type="button">Vidéo + Facecam</button>
     </header>
+
+    <section id="greenScreenPanel" class="greenScreenPanel" aria-label="Décor du mode fond vert">
+      <div>
+        <strong>STUDIO FOND VERT</strong>
+        <span>Décor vert par défaut · l’image ou la vidéo importée ne sera jamais détourée</span>
+      </div>
+      <div class="greenScreenActions">
+        <label id="greenImportLabel" class="greenImportButton" for="mediaInput">Choisir une image ou vidéo</label>
+        <button id="greenResetBackground" class="greenResetButton" type="button">Revenir au vert</button>
+      </div>
+    </section>
 
     <main>
       <section class="viewer" id="viewer" aria-label="Aperçu vidéo">
@@ -185,7 +211,7 @@
             <option value="720">720p fluide</option>
           </select>
         </label>
-        <label class="checkLabel" for="segmentationEnabled">
+        <label id="segmentationSetting" class="checkLabel" for="segmentationEnabled">
           <input id="segmentationEnabled" type="checkbox" checked>
           <span id="segmentationLabel">Détourage IA caméra · APK</span>
         </label>

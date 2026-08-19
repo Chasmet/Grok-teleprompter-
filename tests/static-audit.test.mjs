@@ -5,6 +5,7 @@ import vm from 'node:vm';
 
 const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const script = fs.readFileSync(new URL('../script.js', import.meta.url), 'utf8');
+const styles = fs.readFileSync(new URL('../style.css', import.meta.url), 'utf8');
 const manifest = fs.readFileSync(new URL('../app/src/main/AndroidManifest.xml', import.meta.url), 'utf8');
 const android = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokteleprompter/MainActivity.java', import.meta.url), 'utf8');
 const nativeWorklet = fs.readFileSync(new URL('../native-audio-worklet.js', import.meta.url), 'utf8');
@@ -175,13 +176,30 @@ test('native segmentation affects only the live camera and never imported media'
   assert.match(html, /id="segmentationEnabled"/);
   assert.match(android, /segmentCameraFrame\(String jpegBase64, int requestId\)/);
   assert.match(script, /window\.GrokSegmentation/);
-  assert.match(script, /const cutoutRequired = segmentationWanted\(\)/);
+  assert.match(script, /const cutoutRequired = cameraCutoutRequired\(\)/);
   assert.match(script, /state\.segmentationReady \? elements\.cameraCutout : null/);
   assert.doesNotMatch(script,
     /state\.segmentationReady\s*\?\s*elements\.cameraCutout\s*:\s*elements\.cameraVideo/);
   assert.match(script, /await waitForCameraCutout\(\)/);
   assert.match(script, /drawImported\(context, canvas\)/);
   assert.doesNotMatch(script, /segmentCameraFrame\([^\n]*mediaVideo/);
+});
+
+test('classic and green-screen studios remain separate', () => {
+  for (const id of ['classicStudioTab', 'greenStudioTab', 'greenScreenPanel', 'greenImportLabel', 'greenResetBackground']) {
+    assert.match(html, new RegExp(`id="${id}"`));
+  }
+  assert.match(script, /studioMode: 'classic'/);
+  assert.match(script, /classicMode: 'facecam'/);
+  assert.match(script, /const greenStudioActive = \(\) => state\.studioMode === 'green'/);
+  assert.match(script, /state\.mode = 'facecam'/);
+  assert.match(script, /context\.fillStyle = greenStudioActive\(\) \? '#00b140' : '#000'/);
+  assert.match(script, /greenStudioActive\(\) && !state\.segmentationSupported/);
+  assert.match(script, /!greenStudioActive\(\) && state\.mode !== 'live' && !state\.mediaType/);
+  assert.match(script, /const cameraSource = cutoutRequired\s*\? \(state\.segmentationReady \? elements\.cameraCutout : null\)/);
+  assert.match(styles, /body\[data-studio-mode="green"\] \.top\s*\{\s*display:\s*none/);
+  assert.match(styles, /body\[data-studio-mode="green"\] \.stage\s*\{\s*background:\s*#00b140/);
+  assert.match(styles, /body\[data-studio-mode="green"\] \.faceFrame:not\(\.segmentationReady\) video\s*\{\s*visibility:\s*hidden/);
 });
 
 test('the sound meter cannot add a second audio path while recording', () => {

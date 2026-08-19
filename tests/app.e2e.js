@@ -5,6 +5,41 @@ test.beforeEach(async ({ page }) => {
   await page.waitForLoadState('networkidle');
 });
 
+test('classic and green-screen studios expose two distinct experiences', async ({ page }) => {
+  const classicTab = page.locator('#classicStudioTab');
+  const greenTab = page.locator('#greenStudioTab');
+
+  await expect(classicTab).toBeVisible();
+  await expect(greenTab).toBeVisible();
+  await expect(classicTab).toHaveClass(/active/);
+  await expect(page.locator('.top')).toBeVisible();
+  await expect(page.locator('#greenScreenPanel')).toBeHidden();
+
+  await greenTab.click();
+  await expect(page.locator('body')).toHaveAttribute('data-studio-mode', 'green');
+  await expect(greenTab).toHaveClass(/active/);
+  await expect(page.locator('.top')).toBeHidden();
+  await expect(page.locator('#greenScreenPanel')).toBeVisible();
+  await expect(page.locator('#segmentationEnabled')).toBeChecked();
+  await expect(page.locator('#segmentationEnabled')).toBeDisabled();
+  await expect(page.locator('#mediaInfo')).toHaveText('Décor vert prêt');
+  await expect(page.locator('#stage')).toHaveCSS('background-color', 'rgb(0, 177, 64)');
+
+  await page.locator('#mediaInput').setInputFiles('icon-512.png');
+  await expect(page.locator('#mediaImage')).toBeVisible();
+  await expect(page.locator('#greenImportLabel')).toHaveText('Changer le décor');
+  await expect(page.locator('#mediaInfo')).toContainText('Décor image');
+
+  await page.locator('#greenResetBackground').click();
+  await expect(page.locator('#mediaImage')).toBeHidden();
+  await expect(page.locator('#mediaInfo')).toHaveText('Décor vert prêt');
+
+  await classicTab.click();
+  await expect(page.locator('body')).toHaveAttribute('data-studio-mode', 'classic');
+  await expect(page.locator('.top')).toBeVisible();
+  await expect(page.locator('#greenScreenPanel')).toBeHidden();
+});
+
 test('the prompt stays readable and can be moved and resized', async ({ page }) => {
   const empty = page.locator('#empty');
   const prompt = page.locator('#teleprompter');
