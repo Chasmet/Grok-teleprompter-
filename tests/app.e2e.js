@@ -151,6 +151,9 @@ test('camera, microphone, facecam gestures and recording work together', async (
 
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  // Clicking the record bar scrolls the mobile viewport below the preview.
+  // Bring the facecam back into view before sending real pointer coordinates.
+  await frame.scrollIntoViewIfNeeded();
   const beforeRecordingMove = await frame.boundingBox();
   await page.mouse.move(beforeRecordingMove.x + beforeRecordingMove.width / 2,
     beforeRecordingMove.y + beforeRecordingMove.height / 2);
