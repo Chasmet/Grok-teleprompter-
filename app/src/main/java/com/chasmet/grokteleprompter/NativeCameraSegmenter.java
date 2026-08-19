@@ -95,24 +95,41 @@ final class NativeCameraSegmenter implements AutoCloseable {
         float[] previous = previousMask;
         if (previous != null && previous.length == current.length) {
             for (int index = 0; index < current.length; index++) {
-                current[index] = current[index] * .82f + previous[index] * .18f;
+                float value = current[index];
+                float history = previous[index];
+                float difference = Math.abs(value - history);
+                float historyWeight;
+                if (difference < .035f) historyWeight = .38f;
+                else if (difference < .08f) historyWeight = .29f;
+                else if (difference < .16f) historyWeight = .16f;
+                else if (difference < .28f) historyWeight = .055f;
+                else historyWeight = .012f;
+                if (value < history && difference > .08f) historyWeight *= .55f;
+                float stable = value * (1f - historyWeight) + history * historyWeight;
+                if (difference > .12f) {
+                    float motion = Math.min(1f, (difference - .12f) / .40f);
+                    stable = .5f + (stable - .5f) * (1f + .14f * motion);
+                }
+                current[index] = clamp(stable);
             }
         }
-        previousMask = current.clone();
+        previousMask = current;
     }
 
     private static String encodeMask(float[] mask, int width, int height) {
         float[] blurred = blur(mask, width, height);
         int[] pixels = new int[mask.length];
-        final float edge0 = .40f;
-        final float edge1 = .62f;
+        final float edge0 = .39f;
+        final float edge1 = .59f;
         for (int index = 0; index < mask.length; index++) {
             float original = mask[index];
             float sharp = original > .04f && original < .96f
                     ? clamp(original + .72f * (original - blurred[index])) : original;
             float t = clamp((sharp - edge0) / (edge1 - edge0));
-            int alpha = Math.round(255f * t * t * (3f - 2f * t));
-            pixels[index] = (alpha << 24) | 0x00ffffff;
+            float alpha = t * t * (3f - 2f * t);
+            alpha = cleanMatteAlpha(alpha);
+            int alphaByte = Math.round(255f * alpha);
+            pixels[index] = (alphaByte << 24) | 0x00ffffff;
         }
         Bitmap bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888);
         ByteArrayOutputStream output = new ByteArrayOutputStream(Math.max(4096, width * height / 3));
@@ -146,6 +163,13 @@ final class NativeCameraSegmenter implements AutoCloseable {
 
     private static float clamp(float value) {
         return Math.max(0f, Math.min(1f, value));
+    }
+
+    private static float cleanMatteAlpha(float alpha) {
+        if (alpha <= .035f) return 0f;
+        if (alpha >= .965f) return 1f;
+        float t = clamp((alpha - .07f) / .86f);
+        return t * t * (3f - 2f * t);
     }
 
     private void dispatchMask(int requestId, String encodedPng) {

@@ -149,9 +149,18 @@ test('camera, microphone, facecam gestures and recording work together', async (
   await page.locator('#micVolumeRange').fill('150');
   await expect(page.locator('#micVolumeValue')).toHaveText('150 %');
 
-  await page.locator('#liveTab').click();
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
+  const beforeRecordingMove = await frame.boundingBox();
+  await page.mouse.move(beforeRecordingMove.x + beforeRecordingMove.width / 2,
+    beforeRecordingMove.y + beforeRecordingMove.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(beforeRecordingMove.x + beforeRecordingMove.width / 2 - 22,
+    beforeRecordingMove.y + beforeRecordingMove.height / 2 + 18, { steps: 4 });
+  await page.mouse.up();
+  const movedDuringRecording = await frame.boundingBox();
+  expect(Math.abs(movedDuringRecording.x - beforeRecordingMove.x)
+    + Math.abs(movedDuringRecording.y - beforeRecordingMove.y)).toBeGreaterThan(12);
   await page.waitForTimeout(1200);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });

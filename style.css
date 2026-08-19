@@ -183,7 +183,8 @@ textarea { width: calc(100% - 24px); min-height: 130px; margin: 7px 12px 0; padd
 
 body.recording .top, body.recording .controls, body.recording .settings, body.recording .audioMixer, body.recording .formatPicker, body.recording textarea { opacity: .62; pointer-events: none; }
 body.recording .teleprompter { pointer-events: none; border-color: transparent; }
-body.recording .teleMoveHandle, body.recording .resizeHandle, body.recording .moveBadge { display: none; }
+body.recording .teleMoveHandle, body.recording .teleResizeHandle { display: none; }
+body.recording .faceFrame .resizeHandle, body.recording .faceFrame .moveBadge { opacity: .42; }
 body.recording .resultActions { pointer-events: none; opacity: .5; }
 
 @media (max-width: 430px) {

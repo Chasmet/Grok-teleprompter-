@@ -144,6 +144,9 @@ test('the tactile and short-text safeguards stay wired', () => {
   assert.match(script, /textHeight > availableHeight/);
   assert.match(script, /if \(!state\.teleShouldScroll\)/);
   assert.match(script, /grokTeleprompterLayout/);
+  assert.match(html, /fonctionne aussi pendant REC/);
+  assert.match(script, /if \(state\.mode !== 'facecam' \|\| !hasLiveCamera\(\)\) return/);
+  assert.doesNotMatch(script, /state\.mode !== 'facecam' \|\| !hasLiveCamera\(\) \|\| document\.body\.classList\.contains\('recording'\)/);
 });
 
 test('imported media keeps the teleprompter for voice-over without recording it into the video', () => {
@@ -172,7 +175,11 @@ test('native segmentation affects only the live camera and never imported media'
   assert.match(html, /id="segmentationEnabled"/);
   assert.match(android, /segmentCameraFrame\(String jpegBase64, int requestId\)/);
   assert.match(script, /window\.GrokSegmentation/);
-  assert.match(script, /const cameraSource = state\.segmentationReady/);
+  assert.match(script, /const cutoutRequired = segmentationWanted\(\)/);
+  assert.match(script, /state\.segmentationReady \? elements\.cameraCutout : null/);
+  assert.doesNotMatch(script,
+    /state\.segmentationReady\s*\?\s*elements\.cameraCutout\s*:\s*elements\.cameraVideo/);
+  assert.match(script, /await waitForCameraCutout\(\)/);
   assert.match(script, /drawImported\(context, canvas\)/);
   assert.doesNotMatch(script, /segmentCameraFrame\([^\n]*mediaVideo/);
 });

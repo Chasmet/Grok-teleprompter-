@@ -14,8 +14,11 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 - Téléprompteur disponible en mode vidéo importée pour enregistrer une voix off sans caméra ; le texte reste un guide à l’écran et n’est jamais incrusté dans le fichier final.
 - Mode vidéo + facecam déplaçable et redimensionnable.
 - Détourage IA natif de la caméra dans les modes Live et Facecam ; les médias importés restent strictement intacts.
+- Le canvas donné à l'encodeur n'utilise jamais la caméra brute lorsque le détourage est activé : l'enregistrement attend le premier masque puis encode uniquement la silhouette déjà aplatie.
 - Caméra affichée en continu à 30 i/s pendant que le masque IA est calculé séparément, pour éviter que l’image se fige.
 - Facecam tactile : glisser, pincer ou tirer la poignée de redimensionnement.
+- Déplacement et pincement disponibles pendant REC ; les gestes sont directement reproduits dans la vidéo finale.
+- Contours stabilisés selon le mouvement pour calmer les cheveux sans laisser de silhouette fantôme.
 - Orientation de la fenêtre facecam au choix : verticale 9:16 ou paysage 16:9, sans modifier la vidéo de fond ni le fichier final.
 - Téléprompteur tactile : position et cadre réglables directement dans l’aperçu.
 - Texte court fixe ; défilement automatique uniquement lorsque le texte dépasse le cadre.
@@ -80,7 +83,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 3. les tests fonctionnels mobiles Chromium (média, caméra/micro simulés, gestes et enregistrement) ;
 4. Android Lint ;
 5. la compilation de l’APK de test ;
-6. la publication de `Grok-Teleprompter-v2.13.0.apk` comme artefact téléchargeable.
+6. la publication de `Grok-Teleprompter-v2.14.1.apk` comme artefact téléchargeable.
 
 ## Structure utile
 

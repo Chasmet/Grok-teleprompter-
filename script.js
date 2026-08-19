@@ -382,7 +382,7 @@
   }
 
   function resizeFace(delta) {
-    state.face.w = clamp(state.face.w + delta, .14, .58);
+    state.face.w = clamp(state.face.w + delta, .12, .96);
     applyFaceAspect();
     saveScript();
   }
@@ -392,22 +392,22 @@
     const wantedRatio = selectedFaceOrientation() === 'horizontal' ? 16 / 9 : 9 / 16;
     const centerX = state.face.x + state.face.w / 2;
     const centerY = state.face.y + state.face.h / 2;
-    let width = clamp(state.face.w, .14, .78);
+    let width = clamp(state.face.w, .12, .96);
     let height = width * stageRatio / wantedRatio;
-    if (height > .64) {
-      height = .64;
+    if (height > .96) {
+      height = .96;
       width = height * wantedRatio / stageRatio;
     }
     if (height < .10) {
       height = .10;
       width = height * wantedRatio / stageRatio;
     }
-    if (width > .78) {
-      width = .78;
+    if (width > .96) {
+      width = .96;
       height = width * stageRatio / wantedRatio;
     }
-    state.face.w = clamp(width, .10, .78);
-    state.face.h = clamp(height, .08, .64);
+    state.face.w = clamp(width, .10, .96);
+    state.face.h = clamp(height, .08, .96);
     state.face.x = clamp(centerX - state.face.w / 2, 0, 1 - state.face.w);
     state.face.y = clamp(centerY - state.face.h / 2, 0, 1 - state.face.h);
     layoutFace();
@@ -1265,25 +1265,34 @@
     context.fillStyle = '#000';
     context.fillRect(0, 0, canvas.width, canvas.height);
     const mirrorCamera = state.facingMode === 'user' && state.mirrored;
-    const cameraSource = state.segmentationReady
-      ? elements.cameraCutout : elements.cameraVideo;
+    const cutoutRequired = segmentationWanted();
+    const cameraSource = cutoutRequired
+      ? (state.segmentationReady ? elements.cameraCutout : null)
+      : elements.cameraVideo;
     if (state.mode === 'live' && elements.cameraVideo.readyState >= 2) {
-      drawCovered(context, cameraSource, 0, 0, canvas.width, canvas.height, mirrorCamera);
+      if (cameraSource) {
+        drawCovered(context, cameraSource, 0, 0, canvas.width, canvas.height, mirrorCamera);
+      }
       return;
     }
     drawImported(context, canvas);
-    if (state.mode === 'facecam' && elements.cameraVideo.readyState >= 2) {
+    if (state.mode === 'facecam' && elements.cameraVideo.readyState >= 2 && cameraSource) {
       const x = Math.round(state.face.x * canvas.width);
       const y = Math.round(state.face.y * canvas.height);
       const width = Math.round(state.face.w * canvas.width);
       const height = Math.round(state.face.h * canvas.height);
       drawCovered(context, cameraSource, x, y, width, height, mirrorCamera);
-      if (!state.segmentationReady) {
-        context.lineWidth = Math.max(4, canvas.width * .006);
-        context.strokeStyle = '#fff';
-        context.strokeRect(x, y, width, height);
-      }
     }
+  }
+
+  async function waitForCameraCutout(timeoutMs = 4500) {
+    if (!segmentationWanted() || state.segmentationReady) return true;
+    const deadline = performance.now() + timeoutMs;
+    while (segmentationWanted() && !state.segmentationReady
+      && performance.now() < deadline) {
+      await delay(50);
+    }
+    return !segmentationWanted() || state.segmentationReady;
   }
 
   function outputSize() {
@@ -1395,6 +1404,12 @@
     clearRecordingResult();
     state.stopRequested = false;
     state.stopReason = '';
+
+    if ((state.mode === 'live' || state.mode === 'facecam')
+      && segmentationWanted() && !await waitForCameraCutout()) {
+      showStatus('Détourage encore en préparation · réessaie dans un instant', true, 5200);
+      return;
+    }
 
     state.nativeMicrophone?.context?.resume().catch(() => {});
 
@@ -1694,7 +1709,7 @@
         if (Number.isFinite(savedMicVolume)) elements.micVolumeRange.value = String(clamp(savedMicVolume, 0, 200));
         if (Number.isFinite(savedMediaVolume)) elements.mediaVolumeRange.value = String(clamp(savedMediaVolume, 0, 100));
       }
-      state.face = restoreBox(layout?.face, DEFAULT_FACE, .14, .10);
+      state.face = restoreBox(layout?.face, DEFAULT_FACE, .12, .10);
       state.teleBox = restoreBox(layout?.teleBox, DEFAULT_TELE_BOX, .35, .24);
       if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;
     } catch (_) {}
@@ -1927,7 +1942,7 @@
   }
 
   elements.faceFrame.addEventListener('pointerdown', (event) => {
-    if (state.mode !== 'facecam' || !hasLiveCamera() || document.body.classList.contains('recording')) return;
+    if (state.mode !== 'facecam' || !hasLiveCamera()) return;
     const point = { id: event.pointerId, x: event.clientX, y: event.clientY };
     state.facePointers.set(event.pointerId, point);
     try { elements.faceFrame.setPointerCapture(event.pointerId); } catch (_) {}
@@ -1955,8 +1970,8 @@
       const points = [...state.facePointers.values()].slice(0, 2);
       const center = pointerCenter(points[0], points[1]);
       const scale = pointerDistance(points[0], points[1]) / Math.max(1, gesture.distance);
-      const width = clamp(gesture.box.w * scale, .14, .78);
-      const height = clamp(gesture.box.h * scale, .10, .64);
+      const width = clamp(gesture.box.w * scale, .12, .96);
+      const height = clamp(gesture.box.h * scale, .10, .96);
       const baseCenterX = gesture.box.x + gesture.box.w / 2;
       const baseCenterY = gesture.box.y + gesture.box.h / 2;
       const centerX = baseCenterX + (center.x - gesture.center.x) / stageRect.width;
