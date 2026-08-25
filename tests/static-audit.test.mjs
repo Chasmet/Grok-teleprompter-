@@ -33,7 +33,9 @@ test('Android exclusively uses its native 48 kHz camcorder microphone', () => {
   assert.match(android, /startNativeMicrophone\(String ignoredProfileName\)/);
   assert.match(android, /NATIVE_MIC_SAMPLE_RATE = 48000/);
   assert.match(android, /requestPermissions\([\s\S]*Manifest\.permission\.RECORD_AUDIO/);
-  assert.match(android, /NATIVE_MIC_CHUNK_BYTES = 3840/);
+  assert.match(android, /NATIVE_MIC_CHUNK_BYTES = 1920/);
+  assert.match(android, /AudioDeviceInfo\.TYPE_BUILTIN_MIC/);
+  assert.match(android, /setPreferredDevice\(device\)/);
   assert.match(android, /while \(filled < pcm\.length/);
   assert.match(android, /Base64\.encodeToString\(pcm, Base64\.NO_WRAP\)/);
   assert.match(android, /MediaRecorder\.AudioSource\.CAMCORDER/);
