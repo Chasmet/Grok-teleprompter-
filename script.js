@@ -45,7 +45,8 @@
     classicMedia: { type: '', width: 720, height: 1280, url: '', name: '', duration: 0, view: { scale: 1, x: 0, y: 0 } },
     greenMedia: { type: '', width: 720, height: 1280, url: '', name: '', duration: 0, view: { scale: 1, x: 0, y: 0 } },
     cameraStream: null, micOnlyStream: null, resumeCamera: false, recorder: null, chunks: [], recordingBlob: null,
-    recordingName: '', timerId: 0, startedAt: 0, renderId: 0, wakeLock: null,
+    recordingName: '', timerId: 0, startedAt: 0, recordingPausedAt: 0, recordingPausedMs: 0,
+    recordingMediaWasPlaying: false, renderId: 0, wakeLock: null,
     audioGraph: null, audioMeterId: 0, microphoneStarting: false, microphonePromise: null, micLastError: null,
     nativeMicrophone: null,
     recordingStarting: false, stopRequested: false, stopReason: '', recordingSaved: true,
@@ -730,9 +731,54 @@
     setTeleOffset(state.teleOffsetPx);
     updateTelePauseUi();
   }
+  function pauseActiveRecording() {
+    const recorder = state.recorder;
+    if (!recorder || recorder.state !== 'recording') return false;
+    try {
+      recorder.pause();
+      state.recordingPausedAt = Date.now();
+      state.recordingMediaWasPlaying = state.mediaType === 'video' && !elements.mediaVideo.paused;
+      if (state.recordingMediaWasPlaying) elements.mediaVideo.pause();
+      elements.audioPeak.textContent = 'PAUSE';
+      elements.recordQuality.textContent = 'Enregistrement en pause';
+      updateTimer();
+      return true;
+    } catch (error) {
+      showStatus(`Pause enregistrement impossible : ${error.message || error.name}`, true, 4200);
+      return false;
+    }
+  }
+  function resumeActiveRecording() {
+    const recorder = state.recorder;
+    if (!recorder || recorder.state !== 'paused') return false;
+    try {
+      recorder.resume();
+      if (state.recordingPausedAt) state.recordingPausedMs += Date.now() - state.recordingPausedAt;
+      state.recordingPausedAt = 0;
+      if (state.recordingMediaWasPlaying && state.mediaType === 'video') {
+        elements.mediaVideo.play().catch(() => {});
+      }
+      state.recordingMediaWasPlaying = false;
+      elements.audioPeak.textContent = 'REC';
+      elements.recordQuality.textContent = `${recordSize().height}p · ${selectedProfile().label} · ${state.nativeMicrophone?.active ? 'micro caméra 48 kHz' : 'micro actif'}`;
+      updateTimer();
+      return true;
+    } catch (error) {
+      showStatus(`Reprise enregistrement impossible : ${error.message || error.name}`, true, 4200);
+      return false;
+    }
+  }
   function toggleTeleprompterPause() {
-    if (state.telePaused) resumeTeleprompter();
-    else pauseTeleprompter();
+    const recordingActive = !!state.recorder && state.recorder.state !== 'inactive';
+    if (state.telePaused) {
+      if (recordingActive && state.recorder.state === 'paused') resumeActiveRecording();
+      resumeTeleprompter();
+      showStatus(recordingActive ? 'Enregistrement et téléprompteur repris' : 'Téléprompteur repris', false, 1800);
+      return;
+    }
+    if (recordingActive && state.recorder.state === 'recording') pauseActiveRecording();
+    pauseTeleprompter();
+    showStatus(recordingActive ? 'Enregistrement en pause · texte tactile actif' : 'Téléprompteur en pause · texte tactile actif', false, 2200);
   }
   function stopTeleprompter(reset = false) {
     state.teleRunning = false;
@@ -1571,7 +1617,9 @@
   }
 
   function updateTimer() {
-    const seconds = Math.floor((Date.now() - state.startedAt) / 1000);
+    const livePauseMs = state.recordingPausedAt ? Date.now() - state.recordingPausedAt : 0;
+    const elapsedMs = Math.max(0, Date.now() - state.startedAt - state.recordingPausedMs - livePauseMs);
+    const seconds = Math.floor(elapsedMs / 1000);
     elements.timer.textContent = `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
   }
 
@@ -1674,6 +1722,9 @@
     }
 
     state.startedAt = Date.now();
+    state.recordingPausedAt = 0;
+    state.recordingPausedMs = 0;
+    state.recordingMediaWasPlaying = false;
     state.timerId = window.setInterval(updateTimer, 400);
     setRecordingUi(true);
     elements.audioMeter.value = 0;
