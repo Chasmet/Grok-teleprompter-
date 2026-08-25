@@ -1,0 +1,130 @@
+name: Fix Teleprompter Touch Pause V2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch teleprompter touch and pause
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if new in text:
+                  print(f'already patched: {label}')
+                  return False
+              if old not in text:
+                  raise SystemExit(f'Patch introuvable: {label}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+              print(f'patched: {label}')
+              return True
+
+          changed = False
+
+          # Pause doit être disponible dès qu'un texte existe, même s'il est court.
+          changed |= replace_once(
+              'script.js',
+              "    elements.telePauseToggle.disabled = !teleHasText() || !state.teleShouldScroll;\n",
+              "    elements.telePauseToggle.disabled = !teleHasText();\n",
+              'pause enabled for any script'
+          )
+
+          changed |= replace_once(
+              'script.js',
+              "  function pauseTeleprompter() {\n    if (!state.teleRunning || !state.teleShouldScroll) return;\n    state.teleOffsetPx = currentTeleOffset();\n",
+              "  function pauseTeleprompter() {\n    if (!teleHasText()) return;\n    state.teleOffsetPx = currentTeleOffset();\n",
+              'pause works even when text is short or already stopped'
+          )
+
+          changed |= replace_once(
+              'script.js',
+              "  function resumeTeleprompter() {\n    if (!state.telePaused || !state.teleShouldScroll) return;\n    runTeleprompterFrom(state.teleOffsetPx);\n  }\n",
+              "  function resumeTeleprompter() {\n    if (!state.telePaused || !teleHasText()) return;\n    updateTeleScrollMode();\n    if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) {\n      runTeleprompterFrom(state.teleOffsetPx);\n      return;\n    }\n    state.telePaused = false;\n    state.teleRunning = false;\n    setTeleOffset(state.teleOffsetPx);\n    updateTelePauseUi();\n  }\n",
+              'resume handles short text safely'
+          )
+
+          # Le cadre du téléprompteur doit rester déplaçable pendant REC.
+          # En pause : glisser dans le texte fait défiler le texte ; la poignée déplace le cadre.
+          changed |= replace_once(
+              'script.js',
+              "  elements.teleprompter.addEventListener('pointerdown', (event) => {\n    if (document.body.classList.contains('recording')) return;\n    stopTeleprompter(true);\n    const point = { id: event.pointerId, x: event.clientX, y: event.clientY };\n",
+              "  elements.teleprompter.addEventListener('pointerdown', (event) => {\n    const explicitHandle = event.target === elements.teleMoveHandle || event.target === elements.teleResizeHandle;\n    if (state.telePaused && !explicitHandle) return;\n    const point = { id: event.pointerId, x: event.clientX, y: event.clientY };\n",
+              'tele box movable during recording without resetting scroll'
+          )
+
+          # En pause, le doigt peut déplacer le texte même si le texte est court.
+          changed |= replace_once(
+              'script.js',
+              "  elements.teleprompter.addEventListener('pointerdown', (event) => {\n    if (!state.telePaused || !state.teleShouldScroll) return;\n    if (event.target === elements.teleResizeHandle) return;\n",
+              "  elements.teleprompter.addEventListener('pointerdown', (event) => {\n    if (!state.telePaused) return;\n    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle) return;\n",
+              'manual text scrolling while paused'
+          )
+
+          # La poignée de déplacement était visuellement présente mais ne recevait aucun toucher.
+          changed |= replace_once(
+              'style.css',
+              ".teleMoveHandle { position: absolute; left: 50%; top: 5px; z-index: 6; padding: 5px 10px; transform: translateX(-50%); border-radius: 999px; background: rgba(37,99,235,.9); color: #fff; font-size: 10px; font-weight: 900; white-space: nowrap; pointer-events: none; }\n",
+              ".teleMoveHandle { position: absolute; left: 50%; top: 5px; z-index: 7; min-height: 32px; padding: 7px 14px; display: grid; place-items: center; transform: translateX(-50%); border-radius: 999px; background: rgba(37,99,235,.96); color: #fff; font-size: 11px; font-weight: 900; white-space: nowrap; pointer-events: auto; touch-action: none; cursor: move; -webkit-tap-highlight-color: transparent; }\n",
+              'interactive tele move handle'
+          )
+
+          changed |= replace_once(
+              'index.html',
+              "        <span>En pause : glisse le texte directement avec le doigt, même pendant REC.</span>\n",
+              "        <span>En pause : glisse le texte avec le doigt. Utilise ✥ Déplacer le texte pour bouger le cadre, même pendant REC.</span>\n",
+              'clear touch help'
+          )
+
+          # Test de non-régression ajouté à l'audit existant.
+          tests = Path('tests/audit.test.mjs')
+          text = tests.read_text(encoding='utf-8')
+          marker = "test('teleprompter pause and drag remain tactile during recording'"
+          if marker not in text:
+              text += r'''
+
+test('teleprompter pause and drag remain tactile during recording', () => {
+  assert.match(script, /telePauseToggle\.disabled = !teleHasText\(\)/);
+  assert.match(script, /function pauseTeleprompter\(\) \{\s*if \(!teleHasText\(\)\) return/);
+  assert.match(script, /const explicitHandle = event\.target === elements\.teleMoveHandle \|\| event\.target === elements\.teleResizeHandle/);
+  assert.doesNotMatch(script, /teleprompter\.addEventListener\('pointerdown',[\s\S]{0,180}document\.body\.classList\.contains\('recording'\)/);
+  assert.match(script, /if \(!state\.telePaused\) return;\s*if \(event\.target === elements\.teleResizeHandle \|\| event\.target === elements\.teleMoveHandle\) return/);
+  assert.match(styles, /\.teleMoveHandle \{[^}]*pointer-events: auto;[^}]*touch-action: none;/);
+});
+'''
+              tests.write_text(text, encoding='utf-8')
+              changed = True
+
+          if not changed:
+              print('No source changes required.')
+
+      - name: Validate JavaScript and tests
+        run: |
+          node --check script.js
+          npm ci
+          npm test
+
+      - name: Commit fixes
+        run: |
+          if git diff --quiet; then
+            echo "Nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add script.js style.css index.html tests/audit.test.mjs
+          git commit -m "fix: teleprompter touch drag and pause during recording"
+          git push
