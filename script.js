@@ -677,7 +677,7 @@
   }
   function updateTelePauseUi() {
     if (!elements.telePauseToggle) return;
-    elements.telePauseToggle.disabled = !teleHasText() || !state.teleShouldScroll;
+    elements.telePauseToggle.disabled = !teleHasText();
     elements.telePauseToggle.classList.toggle('paused', state.telePaused);
     elements.telePauseToggle.textContent = state.telePaused
       ? '▶ Reprendre le téléprompteur'
@@ -708,7 +708,7 @@
     state.teleRaf = requestAnimationFrame(loop);
   }
   function pauseTeleprompter() {
-    if (!state.teleRunning || !state.teleShouldScroll) return;
+    if (!teleHasText()) return;
     state.teleOffsetPx = currentTeleOffset();
     state.teleRunning = false;
     state.telePaused = true;
@@ -719,8 +719,16 @@
     showStatus('Téléprompteur en pause · glisse le texte avec ton doigt', false, 2200);
   }
   function resumeTeleprompter() {
-    if (!state.telePaused || !state.teleShouldScroll) return;
-    runTeleprompterFrom(state.teleOffsetPx);
+    if (!state.telePaused || !teleHasText()) return;
+    updateTeleScrollMode();
+    if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) {
+      runTeleprompterFrom(state.teleOffsetPx);
+      return;
+    }
+    state.telePaused = false;
+    state.teleRunning = false;
+    setTeleOffset(state.teleOffsetPx);
+    updateTelePauseUi();
   }
   function toggleTeleprompterPause() {
     if (state.telePaused) resumeTeleprompter();
@@ -1955,8 +1963,8 @@
   elements.pauseBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.pause(); });
   elements.telePauseToggle?.addEventListener('click', toggleTeleprompterPause);
   elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (!state.telePaused || !state.teleShouldScroll) return;
-    if (event.target === elements.teleResizeHandle) return;
+    if (!state.telePaused) return;
+    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle) return;
     state.teleTouchPointer = event.pointerId;
     state.teleTouchStartY = event.clientY;
     state.teleTouchStartOffset = state.teleOffsetPx;
@@ -2302,8 +2310,8 @@
   }
 
   elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (document.body.classList.contains('recording')) return;
-    stopTeleprompter(true);
+    const explicitHandle = event.target === elements.teleMoveHandle || event.target === elements.teleResizeHandle;
+    if (state.telePaused && !explicitHandle) return;
     const point = { id: event.pointerId, x: event.clientX, y: event.clientY };
     state.telePointers.set(event.pointerId, point);
     try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}

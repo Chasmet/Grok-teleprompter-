@@ -119,7 +119,7 @@ body[data-mode="facecam"] .faceFrame { z-index: 50; }
 .teleprompter::after { bottom: 0; background: linear-gradient(#0000, #000c); }
 .teleText { position: absolute; left: 0; top: 50%; z-index: 1; width: 100%; padding: 30px 18px; color: #fff; font-weight: 900; line-height: 1.28; text-align: center; text-shadow: 0 4px 12px #000, 0 0 22px #000; white-space: pre-wrap; will-change: transform; pointer-events: none; }
 .teleGuide { position: absolute; left: 7%; right: 7%; top: 50%; height: 2px; z-index: 3; background: linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent); opacity: .75; }
-.teleMoveHandle { position: absolute; left: 50%; top: 5px; z-index: 6; padding: 5px 10px; transform: translateX(-50%); border-radius: 999px; background: rgba(37,99,235,.9); color: #fff; font-size: 10px; font-weight: 900; white-space: nowrap; pointer-events: none; }
+.teleMoveHandle { position: absolute; left: 50%; top: 5px; z-index: 7; min-height: 32px; padding: 7px 14px; display: grid; place-items: center; transform: translateX(-50%); border-radius: 999px; background: rgba(37,99,235,.96); color: #fff; font-size: 11px; font-weight: 900; white-space: nowrap; pointer-events: auto; touch-action: none; cursor: move; -webkit-tap-highlight-color: transparent; }
 .teleResizeHandle { background: #7c3aed; }
 
 .telePlaybackBar { display: grid; grid-template-columns: minmax(150px,.9fr) 1.4fr; gap: 9px; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #07142b; }
