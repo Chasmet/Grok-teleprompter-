@@ -8,7 +8,9 @@ import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.net.Uri;
@@ -272,9 +274,8 @@ public final class MainActivity extends Activity {
 
     public final class AndroidBridge {
         private static final int NATIVE_MIC_SAMPLE_RATE = 48000;
-        // 40 ms exactement à 48 kHz mono 16 bits : quatre trames audio de
-        // 10 ms, sans fraction résiduelle aux frontières WebRTC/MediaRecorder.
-        private static final int NATIVE_MIC_CHUNK_BYTES = 3840;
+        // 20 ms à 48 kHz mono 16 bits : latence plus faible et cadence stable.
+        private static final int NATIVE_MIC_CHUNK_BYTES = 1920;
         private final ContentResolver resolver;
         private final NativeCameraSegmenter cameraSegmenter;
         private final Map<String, SaveSession> sessions = new ConcurrentHashMap<>();
@@ -379,10 +380,28 @@ public final class MainActivity extends Activity {
                                 .build())
                         .setBufferSizeInBytes(bufferSize)
                         .build();
-                if (recorder.getState() == AudioRecord.STATE_INITIALIZED) return recorder;
+                if (recorder.getState() == AudioRecord.STATE_INITIALIZED) {
+                    preferBuiltInMicrophone(recorder);
+                    return recorder;
+                }
                 recorder.release();
             } catch (Exception ignored) {}
             return null;
+        }
+
+        private void preferBuiltInMicrophone(AudioRecord recorder) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return;
+            try {
+                AudioManager manager = (AudioManager) getSystemService(AUDIO_SERVICE);
+                if (manager == null) return;
+                AudioDeviceInfo[] inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS);
+                for (AudioDeviceInfo device : inputs) {
+                    if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                        recorder.setPreferredDevice(device);
+                        return;
+                    }
+                }
+            } catch (Exception ignored) {}
         }
 
         private void pumpNativeMicrophone(AudioRecord recorder) {

@@ -99,11 +99,11 @@ final class NativeCameraSegmenter implements AutoCloseable {
                 float history = previous[index];
                 float difference = Math.abs(value - history);
                 float historyWeight;
-                if (difference < .035f) historyWeight = .38f;
-                else if (difference < .08f) historyWeight = .29f;
-                else if (difference < .16f) historyWeight = .16f;
-                else if (difference < .28f) historyWeight = .055f;
-                else historyWeight = .012f;
+                if (difference < .035f) historyWeight = .24f;
+                else if (difference < .08f) historyWeight = .18f;
+                else if (difference < .16f) historyWeight = .09f;
+                else if (difference < .28f) historyWeight = .025f;
+                else historyWeight = .004f;
                 if (value < history && difference > .08f) historyWeight *= .55f;
                 float stable = value * (1f - historyWeight) + history * historyWeight;
                 if (difference > .12f) {

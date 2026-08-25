@@ -9,7 +9,7 @@
     faceResizeHandle: $('faceResizeHandle'), mediaInput: $('mediaInput'), mediaInfo: $('mediaInfo'),
     mediaImportLabel: $('mediaImportLabel'), resultActions: $('resultActions'),
     download: $('download'), discardRecording: $('discardRecording'), status: $('status'),
-    timer: $('timer'), teleprompter: $('teleprompter'),
+    timer: $('timer'), teleprompter: $('teleprompter'), telePauseToggle: $('telePauseToggle'),
     teleText: $('teleText'), scriptInput: $('scriptInput'), speedRange: $('speedRange'),
     sizeRange: $('sizeRange'), liveTab: $('liveTab'), mediaTab: $('mediaTab'), faceTab: $('faceTab'),
     recBtn: $('recBtn'), stopBtn: $('stopBtn'), cameraBtn: $('cameraBtn'), flipBtn: $('flipBtn'),
@@ -56,14 +56,15 @@
     teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
     panStart: null, lastTap: 0,
-    teleRaf: 0, teleStartedAt: 0, teleRunning: false, downloadUrl: '',
+    teleRaf: 0, teleStartedAt: 0, teleRunning: false, telePaused: false, teleOffsetPx: 0,
+    teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, downloadUrl: '',
     segmentationSupported: false, segmentationBusy: false, segmentationReady: false,
     segmentationRequestId: 0, segmentationTimer: 0, segmentationRenderId: 0,
     segmentationMask: null, segmentationCaptureCanvas: null
   };
 
-  const SEGMENTATION_INTERVAL_MS = 55;
-  const SEGMENTATION_INPUT_EDGE = 256;
+  const SEGMENTATION_INTERVAL_MS = 34;
+  const SEGMENTATION_INPUT_EDGE = 224;
 
   const AUDIO_PROFILES = {
     studio: { label: 'Voix studio HD', echoCancellation: true, noiseSuppression: true, autoGainControl: false, channels: 1, highpass: 70, presence: 1.4, threshold: -18, ratio: 2.4, gain: .8 },
@@ -215,7 +216,7 @@
 
   function requestSegmentationMask() {
     if (!segmentationWanted() || state.segmentationBusy || elements.cameraVideo.readyState < 2) {
-      scheduleSegmentation(70);
+      scheduleSegmentation(45);
       return;
     }
     const videoWidth = elements.cameraVideo.videoWidth || 640;
@@ -231,14 +232,14 @@
     }
     const context = capture.getContext('2d', { alpha: false, desynchronized: true });
     context.drawImage(elements.cameraVideo, 0, 0, width, height);
-    const encoded = capture.toDataURL('image/jpeg', .72).split(',')[1] || '';
+    const encoded = capture.toDataURL('image/jpeg', .60).split(',')[1] || '';
     const requestId = ++state.segmentationRequestId;
     try {
       state.segmentationBusy = window.AndroidBridge.segmentCameraFrame(encoded, requestId) === true;
     } catch (_) {
       state.segmentationBusy = false;
     }
-    if (!state.segmentationBusy) scheduleSegmentation(90);
+    if (!state.segmentationBusy) scheduleSegmentation(55);
   }
 
   function renderSegmentedCamera() {
@@ -484,7 +485,7 @@
     elements.teleprompter.style.top = `${box.y * 100}%`;
     elements.teleprompter.style.width = `${box.w * 100}%`;
     elements.teleprompter.style.height = `${box.h * 100}%`;
-    if (!state.teleRunning) requestAnimationFrame(updateTeleScrollMode);
+    if (!state.teleRunning && !state.telePaused) requestAnimationFrame(updateTeleScrollMode);
   }
 
   function moveFace(position) {
@@ -639,7 +640,8 @@
     elements.teleScrollState.textContent = state.teleShouldScroll
       ? 'Texte long : défilement automatique'
       : 'Texte court : reste fixe';
-    if (!state.teleRunning) positionTeleTextAtRest();
+    if (!state.teleRunning && !state.telePaused) positionTeleTextAtRest();
+    updateTelePauseUi();
     return state.teleShouldScroll;
   }
   function positionTeleTextAtRest() {
@@ -661,11 +663,80 @@
       if (reset) positionTeleTextAtRest();
     });
   }
-  function stopTeleprompter(reset = false) {
+  function maxTeleMove() {
+    return Math.max(0, elements.teleText.scrollHeight + elements.teleprompter.clientHeight * .55);
+  }
+  function setTeleOffset(offset) {
+    state.teleOffsetPx = clamp(Number(offset) || 0, 0, maxTeleMove());
+    elements.teleText.style.top = '55%';
+    elements.teleText.style.transform = `translateY(${-state.teleOffsetPx}px)`;
+  }
+  function currentTeleOffset() {
+    const match = String(elements.teleText.style.transform || '').match(/translateY\((-?[0-9.]+)px\)/);
+    return match ? Math.max(0, -Number(match[1])) : state.teleOffsetPx;
+  }
+  function updateTelePauseUi() {
+    if (!elements.telePauseToggle) return;
+    elements.telePauseToggle.disabled = !teleHasText() || !state.teleShouldScroll;
+    elements.telePauseToggle.classList.toggle('paused', state.telePaused);
+    elements.telePauseToggle.textContent = state.telePaused
+      ? '▶ Reprendre le téléprompteur'
+      : 'Ⅱ Pause téléprompteur';
+    elements.teleprompter.classList.toggle('telePaused', state.telePaused);
+  }
+  function runTeleprompterFrom(offset) {
+    state.telePaused = false;
+    state.teleRunning = true;
+    state.teleOffsetPx = clamp(offset, 0, maxTeleMove());
+    state.teleStartedAt = performance.now();
+    const startOffset = state.teleOffsetPx;
+    elements.teleText.style.top = '55%';
+    updateTelePauseUi();
+    const loop = (now) => {
+      if (!state.teleRunning || state.telePaused) return;
+      const speed = 10 + clamp(Number(elements.speedRange.value) || 3, 1, 10) * 9;
+      const elapsed = (now - state.teleStartedAt) / 1000;
+      const nextOffset = Math.min(maxTeleMove(), startOffset + elapsed * speed);
+      setTeleOffset(nextOffset);
+      if (nextOffset < maxTeleMove()) state.teleRaf = requestAnimationFrame(loop);
+      else {
+        state.teleRunning = false;
+        state.teleRaf = 0;
+        updateTelePauseUi();
+      }
+    };
+    state.teleRaf = requestAnimationFrame(loop);
+  }
+  function pauseTeleprompter() {
+    if (!state.teleRunning || !state.teleShouldScroll) return;
+    state.teleOffsetPx = currentTeleOffset();
     state.teleRunning = false;
+    state.telePaused = true;
     if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
     state.teleRaf = 0;
-    if (reset) positionTeleTextAtRest();
+    setTeleOffset(state.teleOffsetPx);
+    updateTelePauseUi();
+    showStatus('Téléprompteur en pause · glisse le texte avec ton doigt', false, 2200);
+  }
+  function resumeTeleprompter() {
+    if (!state.telePaused || !state.teleShouldScroll) return;
+    runTeleprompterFrom(state.teleOffsetPx);
+  }
+  function toggleTeleprompterPause() {
+    if (state.telePaused) resumeTeleprompter();
+    else pauseTeleprompter();
+  }
+  function stopTeleprompter(reset = false) {
+    state.teleRunning = false;
+    state.telePaused = false;
+    state.teleTouchPointer = -1;
+    if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
+    state.teleRaf = 0;
+    if (reset) {
+      state.teleOffsetPx = 0;
+      positionTeleTextAtRest();
+    }
+    updateTelePauseUi();
   }
   function startTeleprompter() {
     updateTeleText(true);
@@ -673,22 +744,13 @@
     updateTeleScrollMode();
     if (!state.teleShouldScroll) {
       state.teleRunning = false;
+      state.telePaused = false;
       positionTeleTextAtRest();
+      updateTelePauseUi();
       return;
     }
-    state.teleRunning = true;
-    state.teleStartedAt = performance.now();
-    elements.teleText.style.top = '55%';
-    const loop = (now) => {
-      if (!state.teleRunning) return;
-      const speed = 10 + clamp(Number(elements.speedRange.value) || 3, 1, 10) * 9;
-      const elapsed = (now - state.teleStartedAt) / 1000;
-      const maxMove = Math.max(0, elements.teleText.scrollHeight + elements.teleprompter.clientHeight * .55);
-      elements.teleText.style.transform = `translateY(${-Math.min(maxMove, elapsed * speed)}px)`;
-      if (elapsed * speed < maxMove) state.teleRaf = requestAnimationFrame(loop);
-      else state.teleRunning = false;
-    };
-    state.teleRaf = requestAnimationFrame(loop);
+    state.teleOffsetPx = 0;
+    runTeleprompterFrom(0);
   }
 
   function applyTeleFont(value) {
@@ -1082,8 +1144,8 @@
         source.buffer = buffer;
         source.connect(native.inputNode);
         const now = context.currentTime;
-        if (!native.nextTime || native.nextTime < now - .08 || native.nextTime > now + .45) {
-          native.nextTime = now + .18;
+        if (!native.nextTime || native.nextTime < now - .045 || native.nextTime > now + .20) {
+          native.nextTime = now + .055;
         }
         source.start(native.nextTime);
         native.nextTime += buffer.duration;
@@ -1891,6 +1953,29 @@
   elements.discardRecording.addEventListener('click', discardRecording);
   elements.playBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.play().catch(() => {}); });
   elements.pauseBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.pause(); });
+  elements.telePauseToggle?.addEventListener('click', toggleTeleprompterPause);
+  elements.teleprompter.addEventListener('pointerdown', (event) => {
+    if (!state.telePaused || !state.teleShouldScroll) return;
+    if (event.target === elements.teleResizeHandle) return;
+    state.teleTouchPointer = event.pointerId;
+    state.teleTouchStartY = event.clientY;
+    state.teleTouchStartOffset = state.teleOffsetPx;
+    try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
+    event.preventDefault();
+  });
+  elements.teleprompter.addEventListener('pointermove', (event) => {
+    if (!state.telePaused || event.pointerId !== state.teleTouchPointer) return;
+    const delta = event.clientY - state.teleTouchStartY;
+    setTeleOffset(state.teleTouchStartOffset - delta);
+    event.preventDefault();
+  });
+  const finishTeleTouch = (event) => {
+    if (event.pointerId !== state.teleTouchPointer) return;
+    state.teleTouchPointer = -1;
+    try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}
+  };
+  elements.teleprompter.addEventListener('pointerup', finishTeleTouch);
+  elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);
   elements.mediaVideo.addEventListener('ended', () => {
     if (state.mediaType === 'video' && state.mode !== 'live' && state.recorder?.state === 'recording') {
       stopRecording('media-ended');
