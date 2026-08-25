@@ -1,0 +1,35 @@
+name: Apply Teleprompter Upgrade
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/apply_teleprompter_upgrade.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply upgrade
+        run: python tools/apply_teleprompter_upgrade.py
+      - name: Commit generated changes
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html style.css script.js app/src/main/java/com/chasmet/grokteleprompter/MainActivity.java app/src/main/java/com/chasmet/grokteleprompter/NativeCameraSegmenter.java
+          git commit -m "feat: smoother green screen and pausable teleprompter"
+          git push
