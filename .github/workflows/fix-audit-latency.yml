@@ -1,0 +1,35 @@
+name: Update latency audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-audit-latency.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Update microphone audit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('tests/static-audit.test.mjs')
+          s = p.read_text()
+          old = 'assert.match(android, /NATIVE_MIC_CHUNK_BYTES = 3840/);'
+          new = '''assert.match(android, /NATIVE_MIC_CHUNK_BYTES = 1920/);\n  assert.match(android, /AudioDeviceInfo\\.TYPE_BUILTIN_MIC/);\n  assert.match(android, /setPreferredDevice\\(device\\)/);'''
+          if old not in s:
+              raise SystemExit('Expected old microphone assertion not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit audit update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/static-audit.test.mjs
+          git commit -m "test: validate 20ms built-in phone microphone"
+          git push
