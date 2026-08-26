@@ -8,7 +8,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ContentValues;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -20,6 +19,7 @@ import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -39,7 +39,11 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
+import android.text.Layout;
+import android.text.StaticLayout;
+import android.text.TextPaint;
 import android.util.DisplayMetrics;
+import android.util.Range;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -64,8 +68,10 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 
 public final class LiveOverlayService extends Service {
@@ -79,6 +85,9 @@ public final class LiveOverlayService extends Service {
 
     private static final String CHANNEL_ID = "grok_live_overlay";
     private static final int NOTIFICATION_ID = 4217;
+    private static final int SEGMENTATION_WIDTH = 288;
+    private static final int SEGMENTATION_HEIGHT = 384;
+    private static final long SEGMENTATION_FRAME_INTERVAL_MS = 42L;
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams cameraParams;
@@ -86,7 +95,9 @@ public final class LiveOverlayService extends Service {
     private WindowManager.LayoutParams controlsParams;
     private FrameLayout cameraRoot;
     private FrameLayout teleRoot;
-    private LinearLayout controlsRoot;
+    private FrameLayout controlsRoot;
+    private PrivateOverlaySurface telePrivateSurface;
+    private PrivateOverlaySurface controlsPrivateSurface;
     private TextureView cameraTexture;
     private ImageView cameraCutout;
     private TextView teleText;
@@ -99,16 +110,39 @@ public final class LiveOverlayService extends Service {
     private Button recButton;
     private Button pauseButton;
     private Button stopButton;
+    private final List<Button> controlButtons = new ArrayList<>();
+
+    private final Paint privatePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    private final TextPaint telePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+    private StaticLayout teleLayout;
+    private int teleLayoutWidth = -1;
+    private int teleLayoutFontSize = -1;
 
     private final Handler mainHandler = new Handler(android.os.Looper.getMainLooper());
     private HandlerThread cameraThread;
     private Handler cameraHandler;
     private CameraDevice cameraDevice;
     private CameraCaptureSession cameraSession;
+    private Surface cameraPreviewSurface;
+    private CameraCharacteristics activeCameraCharacteristics;
     private int cameraFacing = CameraCharacteristics.LENS_FACING_FRONT;
     private boolean segmentationBusy;
     private boolean segmentationFrozen;
     private Segmenter segmenter;
+    private boolean serviceDestroyed;
+    private long segmentationFrameStartedAt;
+    private int[] liveAlphaPixels;
+    private float[] liveMaskValues;
+    private float[] liveMaskHistory;
+    private float[] liveMaskHorizontal;
+    private float[] liveMaskBlurred;
+    private Bitmap liveMaskBitmap;
+    private Bitmap liveCutoutBitmap;
+    private Canvas liveCutoutCanvas;
+    private boolean liveMaskHasHistory;
+    private final Rect liveTargetRect = new Rect();
+    private final Paint liveSourcePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint liveAlphaPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
     private MediaProjection mediaProjection;
     private android.hardware.display.VirtualDisplay virtualDisplay;
@@ -158,32 +192,36 @@ public final class LiveOverlayService extends Service {
     private final Runnable segmentationLoop = new Runnable() {
         @Override
         public void run() {
+            if (serviceDestroyed) return;
             if (cameraTexture == null || !cameraTexture.isAvailable() || segmentationFrozen) {
-                mainHandler.postDelayed(this, 80L);
+                scheduleNextSegmentation(80L);
                 return;
             }
             if (segmentationBusy) {
-                mainHandler.postDelayed(this, 45L);
+                scheduleNextSegmentation(8L);
                 return;
             }
             Bitmap frame;
             try {
-                frame = cameraTexture.getBitmap(240, 320);
+                frame = cameraTexture.getBitmap(SEGMENTATION_WIDTH, SEGMENTATION_HEIGHT);
             } catch (Exception error) {
                 frame = null;
             }
             if (frame == null) {
-                mainHandler.postDelayed(this, 80L);
+                scheduleNextSegmentation(48L);
                 return;
             }
             segmentationBusy = true;
+            segmentationFrameStartedAt = android.os.SystemClock.uptimeMillis();
             Bitmap source = frame;
             segmenter.process(InputImage.fromBitmap(source, 0))
                     .addOnSuccessListener(mask -> renderMask(source, mask))
                     .addOnFailureListener(error -> source.recycle())
                     .addOnCompleteListener(task -> {
                         segmentationBusy = false;
-                        mainHandler.postDelayed(segmentationLoop, 66L);
+                        long processingMs = android.os.SystemClock.uptimeMillis() - segmentationFrameStartedAt;
+                        scheduleNextSegmentation(Math.max(0L,
+                                SEGMENTATION_FRAME_INTERVAL_MS - processingMs));
                     });
         }
     };
@@ -192,6 +230,7 @@ public final class LiveOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        liveAlphaPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
         SelfieSegmenterOptions options = new SelfieSegmenterOptions.Builder()
                 .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
                 .enableRawSizeMask()
@@ -246,12 +285,13 @@ public final class LiveOverlayService extends Service {
 
         createOverlays();
         startCamera();
-        mainHandler.post(segmentationLoop);
+        scheduleNextSegmentation(0L);
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        serviceDestroyed = true;
         mainHandler.removeCallbacksAndMessages(null);
         stopRecordingInternal(false);
         closeCamera();
@@ -264,9 +304,12 @@ public final class LiveOverlayService extends Service {
             try { mediaProjection.stop(); } catch (Exception ignored) {}
             mediaProjection = null;
         }
+        if (telePrivateSurface != null) telePrivateSurface.releaseRenderer();
+        if (controlsPrivateSurface != null) controlsPrivateSurface.releaseRenderer();
         removeOverlay(cameraRoot);
         removeOverlay(teleRoot);
         removeOverlay(controlsRoot);
+        releaseSegmentationBuffers();
         if (cameraThread != null) {
             cameraThread.quitSafely();
             cameraThread = null;
@@ -332,7 +375,6 @@ public final class LiveOverlayService extends Service {
 
         int teleWidth = Math.min(metrics.widthPixels - dp(28), dp(238));
         teleParams = baseParams(Math.max(dp(170), teleWidth), dp(165));
-        excludeFromRecording(teleParams);
         teleParams.gravity = Gravity.TOP | Gravity.START;
         teleParams.x = Math.max(dp(8), (metrics.widthPixels - teleParams.width) / 2);
         teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
@@ -341,7 +383,6 @@ public final class LiveOverlayService extends Service {
 
         int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
         controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
-        excludeFromRecording(controlsParams);
         controlsParams.gravity = Gravity.TOP | Gravity.START;
         controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
         controlsParams.y = dp(22);
@@ -351,11 +392,6 @@ public final class LiveOverlayService extends Service {
 
         updateInteractivity();
         updateControls();
-    }
-
-    private void excludeFromRecording(WindowManager.LayoutParams params) {
-        // Keep this overlay visible on the phone while excluding it from screenshots/MediaProjection.
-        params.flags |= WindowManager.LayoutParams.FLAG_SECURE;
     }
 
     private WindowManager.LayoutParams baseParams(int width, int height) {
@@ -413,7 +449,13 @@ public final class LiveOverlayService extends Service {
     private FrameLayout buildTeleWindow() {
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(true);
-        root.setBackground(roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
+        root.setBackground(null);
+
+        telePrivateSurface = new PrivateOverlaySurface(this, this::drawPrivateTeleprompter);
+        root.addView(telePrivateSurface, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
 
         teleText = new TextView(this);
         teleText.setText(script);
@@ -424,6 +466,7 @@ public final class LiveOverlayService extends Service {
         teleText.setPadding(dp(14), dp(56), dp(14), dp(80));
         teleText.setShadowLayer(dp(4), 0, dp(2), Color.BLACK);
         teleText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        teleText.setAlpha(0f);
         FrameLayout.LayoutParams textLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -433,6 +476,7 @@ public final class LiveOverlayService extends Service {
         attachManualTeleScroll(teleText);
 
         teleMoveHandle = handle("✥ TÉLÉPROMPTEUR · GLISSE");
+        teleMoveHandle.setAlpha(0f);
         FrameLayout.LayoutParams moveLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(34), Gravity.TOP);
         moveLp.leftMargin = dp(4);
@@ -443,24 +487,44 @@ public final class LiveOverlayService extends Service {
 
         teleResizeHandle = handle("↘");
         teleResizeHandle.setTextSize(16);
+        teleResizeHandle.setAlpha(0f);
         FrameLayout.LayoutParams resizeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.BOTTOM | Gravity.END);
         root.addView(teleResizeHandle, resizeLp);
         attachResizeHandle(teleResizeHandle, root, teleParams, dp(150), dp(110));
+        root.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                        oldLeft, oldTop, oldRight, oldBottom) -> {
+            if (right - left != oldRight - oldLeft) invalidateTeleLayout();
+            requestPrivateTeleRender();
+        });
         return root;
     }
 
-    private LinearLayout buildControlsWindow() {
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(7), dp(7), dp(7), dp(7));
-        root.setBackground(roundedDrawable(0xEE07111F, 0xAA34D399, dp(18), dp(1)));
+    private FrameLayout buildControlsWindow() {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackground(null);
+
+        controlsPrivateSurface = new PrivateOverlaySurface(this, this::drawPrivateControls);
+        root.addView(controlsPrivateSurface, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(7), dp(7), dp(7), dp(7));
+        content.setAlpha(0f);
+        root.addView(content, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP
+        ));
 
         statusText = new TextView(this);
         statusText.setTextColor(Color.WHITE);
         statusText.setTextSize(12);
         statusText.setGravity(Gravity.CENTER);
         statusText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        root.addView(statusText, new LinearLayout.LayoutParams(
+        content.addView(statusText, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(24)
         ));
@@ -474,7 +538,7 @@ public final class LiveOverlayService extends Service {
         row1.addView(pauseButton, weight());
         row1.addView(stopButton, weight());
         row1.addView(closeButton, weight());
-        root.addView(row1);
+        content.addView(row1);
 
         tuningRow = row();
         Button flip = button("⇄ Cam");
@@ -487,7 +551,7 @@ public final class LiveOverlayService extends Service {
         for (Button b : Arrays.asList(flip, camMinus, camPlus, textMinus, textPlus, speedMinus, speedPlus)) {
             tuningRow.addView(b, weight());
         }
-        root.addView(tuningRow);
+        content.addView(tuningRow);
 
         recButton.setOnClickListener(v -> startRecording());
         pauseButton.setOnClickListener(v -> togglePause());
@@ -500,7 +564,142 @@ public final class LiveOverlayService extends Service {
         textPlus.setOnClickListener(v -> changeFont(2));
         speedMinus.setOnClickListener(v -> changeSpeed(-1));
         speedPlus.setOnClickListener(v -> changeSpeed(1));
+        root.addOnLayoutChangeListener((view, left, top, right, bottom,
+                                        oldLeft, oldTop, oldRight, oldBottom) -> requestPrivateControlsRender());
         return root;
+    }
+
+    private void drawPrivateTeleprompter(Canvas canvas, int width, int height) {
+        RectF panel = new RectF(0f, 0f, width, height);
+        if (recording) {
+            drawRoundedPanel(canvas, panel, dp(18), 0x33000000, Color.TRANSPARENT, 0f);
+        } else {
+            drawRoundedPanel(canvas, panel, dp(18), 0x44000000, 0xAA60A5FA, dp(2));
+        }
+
+        int contentWidth = Math.max(1, width - dp(28));
+        StaticLayout layout = ensureTeleLayout(contentWidth);
+        if (layout != null) {
+            canvas.save();
+            canvas.clipRect(0, 0, width, height);
+            canvas.translate(dp(14), dp(126) - teleOffset);
+            layout.draw(canvas);
+            canvas.restore();
+        }
+
+        if (!recording) {
+            RectF move = new RectF(dp(4), dp(3), width - dp(4), dp(37));
+            drawRoundedPanel(canvas, move, dp(12), 0xEE1D4ED8, 0xAAFFFFFF, dp(1));
+            drawCenteredText(canvas, "✥ TÉLÉPROMPTEUR · GLISSE", move,
+                    sp(9), Color.WHITE, true);
+
+            RectF resize = new RectF(width - dp(52), height - dp(52), width, height);
+            drawRoundedPanel(canvas, resize, dp(12), 0xEE1D4ED8, 0xAAFFFFFF, dp(1));
+            drawCenteredText(canvas, "↘", resize, sp(16), Color.WHITE, true);
+        }
+    }
+
+    private void drawPrivateControls(Canvas canvas, int width, int height) {
+        drawRoundedPanel(canvas, new RectF(0f, 0f, width, height), dp(18),
+                0xEE07111F, 0xAA34D399, dp(1));
+
+        Rect statusBounds = descendantBounds(statusText);
+        if (statusBounds != null) {
+            drawCenteredText(canvas, String.valueOf(statusText.getText()),
+                    new RectF(statusBounds), sp(12), Color.WHITE, true);
+        }
+
+        for (Button button : controlButtons) {
+            if (!button.isShown()) continue;
+            Rect bounds = descendantBounds(button);
+            if (bounds == null || bounds.width() <= 0 || bounds.height() <= 0) continue;
+            RectF rect = new RectF(bounds);
+            int fill = button.isEnabled() ? 0xFF172554 : 0x99172554;
+            int stroke = button.isEnabled() ? 0x775D7CFA : 0x335D7CFA;
+            int textColor = button.isEnabled() ? Color.WHITE : 0x99FFFFFF;
+            drawRoundedPanel(canvas, rect, dp(10), fill, stroke, dp(1));
+            drawCenteredText(canvas, String.valueOf(button.getText()), rect,
+                    sp(8), textColor, false);
+        }
+    }
+
+    private Rect descendantBounds(android.view.View descendant) {
+        if (controlsRoot == null || descendant == null || !descendant.isShown()) return null;
+        Rect rect = new Rect(0, 0, descendant.getWidth(), descendant.getHeight());
+        try {
+            controlsRoot.offsetDescendantRectToMyCoords(descendant, rect);
+            return rect;
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private void drawRoundedPanel(Canvas canvas, RectF rect, float radius,
+                                  int fillColor, int strokeColor, float strokeWidth) {
+        privatePaint.setStyle(Paint.Style.FILL);
+        privatePaint.setColor(fillColor);
+        privatePaint.clearShadowLayer();
+        canvas.drawRoundRect(rect, radius, radius, privatePaint);
+        if (strokeWidth > 0f && Color.alpha(strokeColor) > 0) {
+            privatePaint.setStyle(Paint.Style.STROKE);
+            privatePaint.setStrokeWidth(strokeWidth);
+            privatePaint.setColor(strokeColor);
+            float inset = strokeWidth * .5f;
+            RectF inner = new RectF(rect.left + inset, rect.top + inset,
+                    rect.right - inset, rect.bottom - inset);
+            canvas.drawRoundRect(inner, Math.max(0f, radius - inset),
+                    Math.max(0f, radius - inset), privatePaint);
+        }
+    }
+
+    private void drawCenteredText(Canvas canvas, String value, RectF bounds,
+                                  float textSizePx, int color, boolean bold) {
+        privatePaint.setStyle(Paint.Style.FILL);
+        privatePaint.setColor(color);
+        privatePaint.setTextSize(textSizePx);
+        privatePaint.setTextAlign(Paint.Align.CENTER);
+        privatePaint.setTypeface(bold
+                ? android.graphics.Typeface.DEFAULT_BOLD
+                : android.graphics.Typeface.DEFAULT);
+        privatePaint.setShadowLayer(dp(2), 0f, dp(1), 0xCC000000);
+        Paint.FontMetrics metrics = privatePaint.getFontMetrics();
+        float baseline = bounds.centerY() - (metrics.ascent + metrics.descent) * .5f;
+        canvas.drawText(value, bounds.centerX(), baseline, privatePaint);
+        privatePaint.clearShadowLayer();
+    }
+
+    private StaticLayout ensureTeleLayout(int width) {
+        width = Math.max(1, width);
+        if (teleLayout != null && teleLayoutWidth == width
+                && teleLayoutFontSize == fontSizeSp) return teleLayout;
+        telePaint.setColor(Color.WHITE);
+        telePaint.setTextSize(sp(fontSizeSp));
+        telePaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        telePaint.setShadowLayer(dp(4), 0f, dp(2), Color.BLACK);
+        teleLayout = StaticLayout.Builder.obtain(script, 0, script.length(), telePaint, width)
+                .setAlignment(Layout.Alignment.ALIGN_CENTER)
+                .setIncludePad(true)
+                .setLineSpacing(dp(2), 1.02f)
+                .setBreakStrategy(Layout.BREAK_STRATEGY_BALANCED)
+                .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+                .build();
+        teleLayoutWidth = width;
+        teleLayoutFontSize = fontSizeSp;
+        return teleLayout;
+    }
+
+    private void invalidateTeleLayout() {
+        teleLayout = null;
+        teleLayoutWidth = -1;
+        teleLayoutFontSize = -1;
+    }
+
+    private void requestPrivateTeleRender() {
+        if (telePrivateSurface != null) telePrivateSurface.requestRender();
+    }
+
+    private void requestPrivateControlsRender() {
+        if (controlsPrivateSurface != null) controlsPrivateSurface.requestRender();
     }
 
     private LinearLayout row() {
@@ -525,6 +724,7 @@ public final class LiveOverlayService extends Service {
         button.setAllCaps(false);
         button.setPadding(dp(3), 0, dp(3), 0);
         button.setBackground(roundedDrawable(0xFF172554, 0x775D7CFA, dp(10), dp(1)));
+        controlButtons.add(button);
         return button;
     }
 
@@ -779,14 +979,18 @@ public final class LiveOverlayService extends Service {
 
     private void applyTeleOffset() {
         if (teleText == null || teleRoot == null) return;
-        float max = Math.max(0f, teleText.getHeight() - teleParams.height * .42f);
+        StaticLayout layout = ensureTeleLayout(Math.max(1, teleParams.width - dp(28)));
+        float contentHeight = (layout == null ? teleText.getHeight() : layout.getHeight()) + dp(136);
+        float max = Math.max(0f, contentHeight - teleParams.height * .42f);
         teleOffset = Math.min(teleOffset, max);
         teleText.setTranslationY(dp(70) - teleOffset);
+        requestPrivateTeleRender();
     }
 
     private void changeFont(int delta) {
         fontSizeSp = clamp(fontSizeSp + delta, 20, 70);
         teleText.setTextSize(fontSizeSp);
+        invalidateTeleLayout();
         teleText.post(this::applyTeleOffset);
     }
 
@@ -804,8 +1008,9 @@ public final class LiveOverlayService extends Service {
         float chromeAlpha = recording ? 0f : 1f;
         if (cameraMoveHandle != null) cameraMoveHandle.setAlpha(chromeAlpha);
         if (cameraResizeHandle != null) cameraResizeHandle.setAlpha(chromeAlpha);
-        if (teleMoveHandle != null) teleMoveHandle.setAlpha(chromeAlpha);
-        if (teleResizeHandle != null) teleResizeHandle.setAlpha(chromeAlpha);
+        // Les poignées du téléprompteur sont dessinées uniquement sur la surface privée.
+        if (teleMoveHandle != null) teleMoveHandle.setAlpha(0f);
+        if (teleResizeHandle != null) teleResizeHandle.setAlpha(0f);
 
         if (cameraRoot != null) {
             cameraRoot.setBackground(recording
@@ -813,14 +1018,14 @@ public final class LiveOverlayService extends Service {
                     : roundedDrawable(0x18000000, 0xCCFFFFFF, dp(15), dp(2)));
         }
         if (teleRoot != null) {
-            teleRoot.setBackground(recording
-                    ? null
-                    : roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
+            teleRoot.setBackground(null);
         }
         if (tuningRow != null) {
             tuningRow.setVisibility(recording ? android.view.View.GONE : android.view.View.VISIBLE);
         }
         if (controlsRoot != null) controlsRoot.requestLayout();
+        requestPrivateTeleRender();
+        if (controlsRoot != null) controlsRoot.post(this::requestPrivateControlsRender);
     }
 
     private void updateInteractivity() {
@@ -858,18 +1063,29 @@ public final class LiveOverlayService extends Service {
         try {
             CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
             String selected = null;
+            CameraCharacteristics selectedCharacteristics = null;
             for (String id : manager.getCameraIdList()) {
-                Integer facing = manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING);
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(id);
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
                 if (facing != null && facing == cameraFacing) {
                     selected = id;
+                    selectedCharacteristics = characteristics;
                     break;
                 }
             }
-            if (selected == null && manager.getCameraIdList().length > 0) selected = manager.getCameraIdList()[0];
+            if (selected == null && manager.getCameraIdList().length > 0) {
+                selected = manager.getCameraIdList()[0];
+                selectedCharacteristics = manager.getCameraCharacteristics(selected);
+            }
             if (selected == null) return;
+            activeCameraCharacteristics = selectedCharacteristics;
             manager.openCamera(selected, new CameraDevice.StateCallback() {
                 @Override
                 public void onOpened(@NonNull CameraDevice camera) {
+                    if (serviceDestroyed) {
+                        camera.close();
+                        return;
+                    }
                     cameraDevice = camera;
                     createCameraSession();
                 }
@@ -897,14 +1113,33 @@ public final class LiveOverlayService extends Service {
             android.graphics.SurfaceTexture texture = cameraTexture.getSurfaceTexture();
             if (texture == null) return;
             texture.setDefaultBufferSize(640, 480);
+            if (cameraPreviewSurface != null) {
+                try { cameraPreviewSurface.release(); } catch (Exception ignored) {}
+            }
             Surface surface = new Surface(texture);
+            cameraPreviewSurface = surface;
             CaptureRequest.Builder builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             builder.addTarget(surface);
             builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+            Range<Integer> stableFps = selectStableCameraFps(activeCameraCharacteristics);
+            if (stableFps != null) {
+                builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, stableFps);
+            }
+            if (supportsMode(activeCameraCharacteristics,
+                    CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES,
+                    CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)) {
+                builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
+                        CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON);
+            }
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession session) {
+                    if (serviceDestroyed || cameraDevice == null) {
+                        session.close();
+                        return;
+                    }
                     cameraSession = session;
                     try { session.setRepeatingRequest(builder.build(), null, cameraHandler); }
                     catch (Exception ignored) {}
@@ -921,7 +1156,39 @@ public final class LiveOverlayService extends Service {
                 ? CameraCharacteristics.LENS_FACING_BACK
                 : CameraCharacteristics.LENS_FACING_FRONT;
         if (cameraCutout != null) cameraCutout.setScaleX(cameraFacing == CameraCharacteristics.LENS_FACING_FRONT ? -1f : 1f);
+        liveMaskHasHistory = false;
         openCamera();
+    }
+
+    private Range<Integer> selectStableCameraFps(CameraCharacteristics characteristics) {
+        if (characteristics == null) return null;
+        Range<Integer>[] ranges = characteristics.get(
+                CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+        if (ranges == null || ranges.length == 0) return null;
+        Range<Integer> best = ranges[0];
+        int bestScore = Integer.MIN_VALUE;
+        for (Range<Integer> range : ranges) {
+            int upper = range.getUpper();
+            int lower = range.getLower();
+            int score = (upper >= 30 ? 10_000 : 0)
+                    - Math.abs(upper - 30) * 100
+                    - Math.abs(lower - 24) * 4;
+            if (lower == 30 && upper == 30) score += 300;
+            if (score > bestScore) {
+                bestScore = score;
+                best = range;
+            }
+        }
+        return best;
+    }
+
+    private boolean supportsMode(CameraCharacteristics characteristics,
+                                 CameraCharacteristics.Key<int[]> key, int requested) {
+        if (characteristics == null) return false;
+        int[] modes = characteristics.get(key);
+        if (modes == null) return false;
+        for (int mode : modes) if (mode == requested) return true;
+        return false;
     }
 
     private void closeCameraDeviceOnly() {
@@ -933,6 +1200,10 @@ public final class LiveOverlayService extends Service {
             try { cameraDevice.close(); } catch (Exception ignored) {}
             cameraDevice = null;
         }
+        if (cameraPreviewSurface != null) {
+            try { cameraPreviewSurface.release(); } catch (Exception ignored) {}
+            cameraPreviewSurface = null;
+        }
     }
 
     private void closeCamera() {
@@ -940,34 +1211,139 @@ public final class LiveOverlayService extends Service {
     }
 
     private void renderMask(Bitmap source, SegmentationMask mask) {
+        if (serviceDestroyed) {
+            if (!source.isRecycled()) source.recycle();
+            return;
+        }
         try {
             int mw = mask.getWidth();
             int mh = mask.getHeight();
+            ensureSegmentationBuffers(mw, mh, source.getWidth(), source.getHeight());
             ByteBuffer bytes = mask.getBuffer();
             bytes.rewind();
             FloatBuffer buffer = bytes.order(ByteOrder.nativeOrder()).asFloatBuffer();
-            int[] alphaPixels = new int[mw * mh];
-            for (int i = 0; i < alphaPixels.length && buffer.hasRemaining(); i++) {
-                float confidence = buffer.get();
-                float normalized = Math.max(0f, Math.min(1f, (confidence - .22f) / .60f));
-                int alpha = Math.round(normalized * 255f);
-                alphaPixels[i] = (alpha << 24) | 0x00FFFFFF;
+            int count = mw * mh;
+            for (int i = 0; i < count && buffer.hasRemaining(); i++) {
+                float value = clamp01(buffer.get());
+                if (liveMaskHasHistory) {
+                    float history = liveMaskHistory[i];
+                    float difference = Math.abs(value - history);
+                    float historyWeight;
+                    if (difference < .04f) historyWeight = .24f;
+                    else if (difference < .10f) historyWeight = .14f;
+                    else if (difference < .20f) historyWeight = .05f;
+                    else historyWeight = .008f;
+                    // Une disparition doit rester rapide pour ne pas laisser de silhouette fantôme.
+                    if (value < history && difference > .08f) historyWeight *= .42f;
+                    value = value * (1f - historyWeight) + history * historyWeight;
+                }
+                liveMaskValues[i] = value;
+                liveMaskHistory[i] = value;
             }
-            Bitmap alpha = Bitmap.createBitmap(alphaPixels, mw, mh, Bitmap.Config.ARGB_8888);
-            Bitmap output = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(output);
-            Rect target = new Rect(0, 0, output.getWidth(), output.getHeight());
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            canvas.drawBitmap(source, null, target, paint);
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-            canvas.drawBitmap(alpha, null, target, paint);
-            paint.setXfermode(null);
-            cameraCutout.setImageBitmap(output);
-            source.recycle();
-            alpha.recycle();
+            liveMaskHasHistory = true;
+            blurMask(liveMaskValues, liveMaskHorizontal, liveMaskBlurred, mw, mh);
+
+            for (int i = 0; i < count; i++) {
+                float value = liveMaskValues[i];
+                float sharp = clamp01(value + .58f * (value - liveMaskBlurred[i]));
+                float edge = clamp01((sharp - .34f) / .29f);
+                float alpha = edge * edge * (3f - 2f * edge);
+                if (alpha <= .025f) alpha = 0f;
+                else if (alpha >= .975f) alpha = 1f;
+                int alphaByte = Math.round(alpha * 255f);
+                liveAlphaPixels[i] = (alphaByte << 24) | 0x00FFFFFF;
+            }
+
+            liveMaskBitmap.setPixels(liveAlphaPixels, 0, mw, 0, 0, mw, mh);
+            liveCutoutCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            liveTargetRect.set(0, 0, liveCutoutBitmap.getWidth(), liveCutoutBitmap.getHeight());
+            liveCutoutCanvas.drawBitmap(source, null, liveTargetRect, liveSourcePaint);
+            liveCutoutCanvas.drawBitmap(liveMaskBitmap, null, liveTargetRect, liveAlphaPaint);
+            if (cameraCutout.getTag() != liveCutoutBitmap) {
+                cameraCutout.setImageBitmap(liveCutoutBitmap);
+                cameraCutout.setTag(liveCutoutBitmap);
+            } else {
+                cameraCutout.invalidate();
+            }
         } catch (Exception error) {
-            source.recycle();
+            // Conserver la dernière silhouette valable si une seule trame échoue.
+        } finally {
+            if (!source.isRecycled()) source.recycle();
         }
+    }
+
+    private void ensureSegmentationBuffers(int maskWidth, int maskHeight,
+                                           int outputWidth, int outputHeight) {
+        int count = maskWidth * maskHeight;
+        if (liveAlphaPixels == null || liveAlphaPixels.length != count) {
+            liveAlphaPixels = new int[count];
+            liveMaskValues = new float[count];
+            liveMaskHistory = new float[count];
+            liveMaskHorizontal = new float[count];
+            liveMaskBlurred = new float[count];
+            liveMaskHasHistory = false;
+            if (liveMaskBitmap != null && !liveMaskBitmap.isRecycled()) liveMaskBitmap.recycle();
+            liveMaskBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888);
+        }
+        if (liveCutoutBitmap == null || liveCutoutBitmap.isRecycled()
+                || liveCutoutBitmap.getWidth() != outputWidth
+                || liveCutoutBitmap.getHeight() != outputHeight) {
+            if (liveCutoutBitmap != null && !liveCutoutBitmap.isRecycled()) liveCutoutBitmap.recycle();
+            liveCutoutBitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888);
+            liveCutoutCanvas = new Canvas(liveCutoutBitmap);
+            if (cameraCutout != null) cameraCutout.setTag(null);
+        }
+    }
+
+    private void blurMask(float[] source, float[] horizontal, float[] output,
+                          int width, int height) {
+        for (int y = 0; y < height; y++) {
+            int row = y * width;
+            for (int x = 0; x < width; x++) {
+                horizontal[row + x] = (source[row + Math.max(0, x - 1)]
+                        + 2f * source[row + x]
+                        + source[row + Math.min(width - 1, x + 1)]) * .25f;
+            }
+        }
+        for (int y = 0; y < height; y++) {
+            int previous = Math.max(0, y - 1) * width;
+            int row = y * width;
+            int next = Math.min(height - 1, y + 1) * width;
+            for (int x = 0; x < width; x++) {
+                output[row + x] = (horizontal[previous + x]
+                        + 2f * horizontal[row + x]
+                        + horizontal[next + x]) * .25f;
+            }
+        }
+    }
+
+    private void scheduleNextSegmentation(long delayMs) {
+        mainHandler.removeCallbacks(segmentationLoop);
+        if (!serviceDestroyed && segmenter != null) {
+            mainHandler.postDelayed(segmentationLoop, Math.max(0L, delayMs));
+        }
+    }
+
+    private void releaseSegmentationBuffers() {
+        if (cameraCutout != null) {
+            cameraCutout.setImageDrawable(null);
+            cameraCutout.setTag(null);
+        }
+        if (liveMaskBitmap != null && !liveMaskBitmap.isRecycled()) liveMaskBitmap.recycle();
+        if (liveCutoutBitmap != null && !liveCutoutBitmap.isRecycled()) liveCutoutBitmap.recycle();
+        liveMaskBitmap = null;
+        liveCutoutBitmap = null;
+        liveCutoutCanvas = null;
+        liveAlphaPixels = null;
+        liveMaskValues = null;
+        liveMaskHistory = null;
+        liveMaskHorizontal = null;
+        liveMaskBlurred = null;
+        liveMaskHasHistory = false;
+    }
+
+    private float clamp01(float value) {
+        return Math.max(0f, Math.min(1f, value));
     }
 
     private void startRecording() {
@@ -994,10 +1370,12 @@ public final class LiveOverlayService extends Service {
             mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
             mediaRecorder.setVideoSize(width, height);
             mediaRecorder.setVideoFrameRate(30);
-            mediaRecorder.setVideoEncodingBitRate(12_000_000);
+            int videoBitRate = Math.min(20_000_000,
+                    Math.max(12_000_000, width * height * 5));
+            mediaRecorder.setVideoEncodingBitRate(videoBitRate);
             mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             mediaRecorder.setAudioSamplingRate(48_000);
-            mediaRecorder.setAudioEncodingBitRate(160_000);
+            mediaRecorder.setAudioEncodingBitRate(192_000);
             mediaRecorder.setAudioChannels(1);
             preferBuiltInMicrophone(mediaRecorder);
             mediaRecorder.prepare();
@@ -1022,6 +1400,7 @@ public final class LiveOverlayService extends Service {
             paused = false;
             recordingClock.start(android.os.SystemClock.elapsedRealtime());
             segmentationFrozen = false;
+            scheduleNextSegmentation(0L);
             teleOffset = 0f;
             teleLastFrame = 0L;
             applyTeleOffset();
@@ -1047,6 +1426,7 @@ public final class LiveOverlayService extends Service {
                 recordingClock.pause(android.os.SystemClock.elapsedRealtime());
                 segmentationFrozen = true;
                 mainHandler.removeCallbacks(teleScrollLoop);
+                scheduleNextSegmentation(120L);
             } else {
                 mediaRecorder.resume();
                 paused = false;
@@ -1054,7 +1434,7 @@ public final class LiveOverlayService extends Service {
                 segmentationFrozen = false;
                 teleLastFrame = 0L;
                 mainHandler.post(teleScrollLoop);
-                mainHandler.post(segmentationLoop);
+                scheduleNextSegmentation(0L);
             }
             updateInteractivity();
             updateControls();
@@ -1164,6 +1544,7 @@ public final class LiveOverlayService extends Service {
             if (paused) statusText.setText("Ⅱ PAUSE " + elapsed + " · gestes actifs");
             else statusText.setText("● REC " + elapsed + " · gestes actifs");
         }
+        if (controlsRoot != null) controlsRoot.post(this::requestPrivateControlsRender);
     }
 
     private void removeOverlay(android.view.View view) {
@@ -1173,6 +1554,10 @@ public final class LiveOverlayService extends Service {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private float sp(float value) {
+        return value * getResources().getDisplayMetrics().scaledDensity;
     }
 
     private int even(int value) {

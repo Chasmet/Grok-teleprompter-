@@ -11,6 +11,8 @@ const android = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokte
 const nativeWorklet = fs.readFileSync(new URL('../native-audio-worklet.js', import.meta.url), 'utf8');
 const androidBuild = fs.readFileSync(new URL('../app/build.gradle', import.meta.url), 'utf8');
 const serviceWorker = fs.readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
+const liveService = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java', import.meta.url), 'utf8');
+const privateOverlay = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokteleprompter/PrivateOverlaySurface.java', import.meta.url), 'utf8');
 
 test('every interface id is unique', () => {
   const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
@@ -185,6 +187,34 @@ test('native segmentation affects only the live camera and never imported media'
   assert.match(script, /await waitForCameraCutout\(\)/);
   assert.match(script, /drawImported\(context, canvas\)/);
   assert.doesNotMatch(script, /segmentCameraFrame\([^\n]*mediaVideo/);
+});
+
+test('Live operator UI uses secure surfaces while the cut-out camera remains recordable', () => {
+  assert.match(privateOverlay, /extends SurfaceView/);
+  assert.match(privateOverlay, /setSecure\(true\)/);
+  assert.match(privateOverlay, /setZOrderOnTop\(true\)/);
+  assert.match(privateOverlay, /PixelFormat\.TRANSLUCENT/);
+  assert.match(liveService, /telePrivateSurface = new PrivateOverlaySurface/);
+  assert.match(liveService, /controlsPrivateSurface = new PrivateOverlaySurface/);
+  assert.match(liveService, /teleText\.setAlpha\(0f\)/);
+  assert.match(liveService, /content\.setAlpha\(0f\)/);
+  assert.match(liveService, /cameraRoot = buildCameraWindow\(\)/);
+  assert.doesNotMatch(liveService, /cameraPrivateSurface/);
+  assert.doesNotMatch(liveService, /FLAG_SECURE/);
+  assert.match(androidBuild, /versionName '2\.16\.4'/);
+});
+
+test('Live cut-out rendering is paced, stabilized and allocation-conscious', () => {
+  assert.match(liveService, /SEGMENTATION_FRAME_INTERVAL_MS = 42L/);
+  assert.match(liveService, /SEGMENTATION_WIDTH = 288/);
+  assert.match(liveService, /ensureSegmentationBuffers/);
+  assert.match(liveService, /liveMaskHasHistory/);
+  assert.match(liveService, /blurMask\(/);
+  assert.match(liveService, /liveCutoutCanvas\.drawColor/);
+  assert.match(liveService, /CONTROL_AE_TARGET_FPS_RANGE/);
+  assert.match(liveService, /CONTROL_VIDEO_STABILIZATION_MODE_ON/);
+  assert.match(liveService, /AudioSource\.CAMCORDER/);
+  assert.match(liveService, /AudioDeviceInfo\.TYPE_BUILTIN_MIC/);
 });
 
 test('classic and green-screen studios remain separate', () => {

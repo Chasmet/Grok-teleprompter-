@@ -1,4 +1,4 @@
-name: Construire l'APK
+name: Construire APK v2.16.4 Secure Smooth
 
 on:
   push:
@@ -36,6 +36,19 @@ jobs:
           node --check script.js
           node --check live-mode.js
 
+      - name: Vérifier les surfaces privées Live
+        run: |
+          SERVICE=app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          SURFACE=app/src/main/java/com/chasmet/grokteleprompter/PrivateOverlaySurface.java
+          test -f "$SURFACE"
+          grep -q 'setSecure(true)' "$SURFACE"
+          grep -q 'setZOrderOnTop(true)' "$SURFACE"
+          grep -q 'telePrivateSurface = new PrivateOverlaySurface' "$SERVICE"
+          grep -q 'controlsPrivateSurface = new PrivateOverlaySurface' "$SERVICE"
+          grep -q 'teleText.setAlpha(0f)' "$SERVICE"
+          grep -q 'content.setAlpha(0f)' "$SERVICE"
+          ! grep -q 'FLAG_SECURE' "$SERVICE"
+
       - name: Installer les tests de l’interface
         run: npm ci
 
@@ -56,13 +69,20 @@ jobs:
       - name: Analyser et construire l'APK
         run: gradle :app:lintDebug :app:assembleDebug --stacktrace
 
-      - name: Renommer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.16.0.apk
+      - name: Vérifier et signer l'artefact de test
+        run: |
+          APK=Grok-Teleprompter-v2.16.4-Secure-Smooth.apk
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK"
+          test "$(stat -c%s "$APK")" -gt 1000000
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='2.16.4'"
+          sha256sum "$APK" > "$APK.sha256"
 
       - name: Publier l'APK téléchargeable
         uses: actions/upload-artifact@v4
         with:
-          name: Grok-Teleprompter-APK
-          path: Grok-Teleprompter-v2.16.0.apk
+          name: Grok-Teleprompter-v2.16.4-Secure-Smooth
+          path: |
+            Grok-Teleprompter-v2.16.4-Secure-Smooth.apk
+            Grok-Teleprompter-v2.16.4-Secure-Smooth.apk.sha256
           if-no-files-found: error
           retention-days: 30

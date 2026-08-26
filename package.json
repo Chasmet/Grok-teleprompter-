@@ -1,6 +1,6 @@
 {
   "name": "grok-teleprompter-studio",
-  "version": "2.15.1",
+  "version": "2.16.4",
   "private": true,
   "scripts": {
     "test": "node --test tests/static-audit.test.mjs",
