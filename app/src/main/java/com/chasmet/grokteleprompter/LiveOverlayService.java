@@ -21,6 +21,7 @@ import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.text.LineBreaker;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
@@ -680,7 +681,7 @@ public final class LiveOverlayService extends Service {
                 .setAlignment(Layout.Alignment.ALIGN_CENTER)
                 .setIncludePad(true)
                 .setLineSpacing(dp(2), 1.02f)
-                .setBreakStrategy(Layout.BREAK_STRATEGY_BALANCED)
+                .setBreakStrategy(LineBreaker.BREAK_STRATEGY_BALANCED)
                 .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
                 .build();
         teleLayoutWidth = width;
