@@ -43,6 +43,7 @@ import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.SurfaceControl;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.TextureView;
@@ -57,6 +58,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 
 import com.google.mlkit.vision.common.InputImage;
+import org.lsposed.hiddenapibypass.HiddenApiBypass;
 import com.google.mlkit.vision.segmentation.Segmentation;
 import com.google.mlkit.vision.segmentation.SegmentationMask;
 import com.google.mlkit.vision.segmentation.Segmenter;
@@ -343,24 +345,47 @@ public final class LiveOverlayService extends Service {
         teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
         teleRoot = buildTeleWindow();
         windowManager.addView(teleRoot, teleParams);
+        teleRoot.post(() -> markWindowSkipScreenshot(teleRoot));
 
         int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
         controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
-        excludeFromRecording(controlsParams);
         controlsParams.gravity = Gravity.TOP | Gravity.START;
         controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
         controlsParams.y = dp(22);
         controlsRoot = buildControlsWindow();
         windowManager.addView(controlsRoot, controlsParams);
+        controlsRoot.post(() -> markWindowSkipScreenshot(controlsRoot));
         attachControlsMove(statusText);
 
         updateInteractivity();
         updateControls();
     }
 
-    private void excludeFromRecording(WindowManager.LayoutParams params) {
-        // Keep this overlay visible on the phone while excluding it from screenshots/MediaProjection.
-        params.flags |= WindowManager.LayoutParams.FLAG_SECURE;
+    private boolean markWindowSkipScreenshot(android.view.View view) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || view == null || !view.isAttachedToWindow()) {
+            return false;
+        }
+        try {
+            Object viewRoot = HiddenApiBypass.invoke(android.view.View.class, view, "getViewRootImpl");
+            if (viewRoot == null) return false;
+            Object rawControl = HiddenApiBypass.invoke(viewRoot.getClass(), viewRoot, "getSurfaceControl");
+            if (!(rawControl instanceof SurfaceControl)) return false;
+            SurfaceControl control = (SurfaceControl) rawControl;
+            if (!control.isValid()) return false;
+            SurfaceControl.Transaction transaction = new SurfaceControl.Transaction();
+            HiddenApiBypass.invoke(
+                    SurfaceControl.Transaction.class,
+                    transaction,
+                    "setSkipScreenshot",
+                    control,
+                    true
+            );
+            transaction.apply();
+            return true;
+        } catch (Throwable ignored) {
+            // Important Huawei fallback: keep content visible instead of turning the recording black.
+            return false;
+        }
     }
 
     private WindowManager.LayoutParams baseParams(int width, int height) {
@@ -419,26 +444,6 @@ public final class LiveOverlayService extends Service {
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(true);
         root.setBackground(roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
-
-        teleSecureSurface = new SurfaceView(this);
-        teleSecureSurface.setSecure(true);
-        teleSecureSurface.setZOrderMediaOverlay(true);
-        teleSecureSurface.getHolder().setFormat(PixelFormat.TRANSLUCENT);
-        teleSecureSurface.setVisibility(android.view.View.GONE);
-        teleSecureSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
-            @Override public void surfaceCreated(@NonNull SurfaceHolder holder) {
-                renderSecureTeleprompter();
-            }
-            @Override public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
-                teleSecureLayout = null;
-                renderSecureTeleprompter();
-            }
-            @Override public void surfaceDestroyed(@NonNull SurfaceHolder holder) {}
-        });
-        root.addView(teleSecureSurface, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        ));
 
         teleText = new TextView(this);
         teleText.setText(script);
@@ -876,7 +881,6 @@ public final class LiveOverlayService extends Service {
         }
         teleOffset = Math.max(0f, Math.min(teleOffset, max));
         teleText.setTranslationY(dp(70) - teleOffset);
-        if (recording) renderSecureTeleprompter();
     }
 
     private void changeFont(int delta) {
@@ -916,15 +920,10 @@ public final class LiveOverlayService extends Service {
                     : roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
         }
         if (teleText != null) {
-            // Alpha zero keeps the TextView alive as the tactile scroll/pinch layer.
-            teleText.setAlpha(recording ? 0f : 1f);
+            teleText.setAlpha(1f);
         }
-        if (teleSecureSurface != null) {
-            teleSecureSurface.setVisibility(recording
-                    ? android.view.View.VISIBLE
-                    : android.view.View.GONE);
-            if (recording) mainHandler.post(this::renderSecureTeleprompter);
-        }
+        if (teleRoot != null) teleRoot.post(() -> markWindowSkipScreenshot(teleRoot));
+        if (controlsRoot != null) controlsRoot.post(() -> markWindowSkipScreenshot(controlsRoot));
         if (tuningRow != null) {
             tuningRow.setVisibility(recording ? android.view.View.GONE : android.view.View.VISIBLE);
         }

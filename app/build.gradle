@@ -10,8 +10,8 @@ android {
         applicationId 'com.chasmet.grokteleprompter'
         minSdk 29
         targetSdk 36
-        versionCode 22
-        versionName '2.16.4'
+        versionCode 23
+        versionName '2.16.5'
     }
 
     buildTypes {
@@ -47,5 +47,6 @@ tasks.named('preBuild').configure { dependsOn tasks.named('syncWebAssets') }
 dependencies {
     implementation 'androidx.webkit:webkit:1.8.0'
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
+    implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
     testImplementation 'junit:junit:4.13.2'
 }
