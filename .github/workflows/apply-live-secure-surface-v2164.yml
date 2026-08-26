@@ -1,0 +1,38 @@
+name: Apply Live secure surface v2.16.4
+
+on:
+  push:
+    paths:
+      - 'tools/fix_live_teleprompter_secure_surface_v2164.py'
+      - '.github/workflows/apply-live-secure-surface-v2164.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply secure SurfaceView teleprompter
+        run: python tools/fix_live_teleprompter_secure_surface_v2164.py
+      - name: Validate source policy
+        run: |
+          grep -q 'teleSecureSurface.setSecure(true)' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'teleText.setAlpha(recording ? 0f : 1f)' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'renderSecureTeleprompter' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          ! grep -A1 'teleParams = baseParams' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java | grep -q 'excludeFromRecording(teleParams)'
+      - name: Commit fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          if git diff --cached --quiet; then
+            echo 'No source change needed'
+          else
+            git commit -m 'fix: keep Live teleprompter visible while recording'
+            git push origin HEAD:main
+          fi
