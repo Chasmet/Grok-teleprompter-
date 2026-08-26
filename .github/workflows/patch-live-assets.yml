@@ -44,3 +44,5 @@ jobs:
           git commit -m "feat: load live mode assets and publish v2.16"
           git pull --rebase origin main
           git push origin HEAD:main
+      - name: Done
+        run: echo "live assets patched"
