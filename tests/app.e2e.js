@@ -3,6 +3,14 @@ const { test, expect } = require('@playwright/test');
 test.beforeEach(async ({ page }) => {
   await page.goto('/index.html');
   await page.waitForLoadState('networkidle');
+  const modeGate = page.locator('#modeGate');
+  if (await modeGate.count()) {
+    await expect(page.locator('#gateClassic')).toBeVisible();
+    await expect(page.locator('#gateGreen')).toBeVisible();
+    await expect(page.locator('#gateLive')).toBeVisible();
+    await page.locator('#gateClassic').click();
+    await expect(modeGate).toBeHidden();
+  }
 });
 
 test('classic and green-screen studios expose two distinct experiences', async ({ page }) => {
