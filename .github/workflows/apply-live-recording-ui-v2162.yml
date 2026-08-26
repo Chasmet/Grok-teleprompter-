@@ -1,0 +1,44 @@
+name: Apply Live recording UI v2.16.2
+
+on:
+  push:
+    paths:
+      - 'tools/apply_live_recording_ui_v2162.py'
+      - '.github/workflows/apply-live-recording-ui-v2162.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Récupérer le projet
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Appliquer le correctif REC
+        run: python3 tools/apply_live_recording_ui_v2162.py
+
+      - name: Vérifier le correctif
+        run: |
+          grep -q 'recordingClock.start' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'recordingTimerLoop' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'updateRecordingChrome' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'cameraMoveHandle.setAlpha' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'tuningRow.setVisibility(recording' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q '● REC " + elapsed' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+
+      - name: Enregistrer le correctif
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          if git diff --cached --quiet; then
+            echo 'Aucun changement à enregistrer'
+          else
+            git commit -m 'fix: clean recording overlay and add live timer'
+            git push
+          fi
