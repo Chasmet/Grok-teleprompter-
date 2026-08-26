@@ -3,14 +3,6 @@
 
   const $ = (id) => document.getElementById(id);
 
-  function button(label, className = '') {
-    const el = document.createElement('button');
-    el.type = 'button';
-    el.className = className;
-    el.textContent = label;
-    return el;
-  }
-
   function copyLiveSettingsToMain(textarea, speed, size) {
     const scriptInput = $('scriptInput');
     const speedRange = $('speedRange');
@@ -27,6 +19,11 @@
       sizeRange.value = size.value;
       sizeRange.dispatchEvent(new Event('input', { bubbles: true }));
     }
+  }
+
+  function launchNativeLive(script, speed, size) {
+    const url = `grok-live://start?text=${encodeURIComponent(script)}&speed=${encodeURIComponent(speed)}&size=${encodeURIComponent(size)}`;
+    window.location.href = url;
   }
 
   function createLiveSetup() {
@@ -78,31 +75,16 @@
 
     $('launchLiveOverlay').addEventListener('click', () => {
       copyLiveSettingsToMain(script, speed, size);
-      if (!window.AndroidBridge?.startLiveOverlay) {
-        const status = $('status');
-        if (status) {
-          status.textContent = 'Le mode Fond d’écran Live fonctionne dans l’APK Android.';
-          status.style.display = 'block';
-          status.style.color = '#fbbf24';
-        }
-        return;
-      }
       const launch = $('launchLiveOverlay');
       launch.disabled = true;
       launch.textContent = 'AUTORISATION ANDROID…';
       try {
-        window.AndroidBridge.startLiveOverlay(
-          script.value,
-          Number(speed.value) || 3,
-          Number(size.value) || 36
-        );
+        launchNativeLive(script.value, Number(speed.value) || 3, Number(size.value) || 36);
+      } finally {
         window.setTimeout(() => {
           launch.disabled = false;
           launch.textContent = 'LANCER LE LIVE SUR MON ÉCRAN';
         }, 1800);
-      } catch (_) {
-        launch.disabled = false;
-        launch.textContent = 'LANCER LE LIVE SUR MON ÉCRAN';
       }
     });
 
