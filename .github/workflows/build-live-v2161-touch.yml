@@ -1,0 +1,58 @@
+name: Construire APK Live v2.16.1 Touch
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-live-v2161-touch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Tester gestes et construire APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Récupérer le projet
+        uses: actions/checkout@v4
+      - name: Installer Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Installer Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Vérifier le code Live
+        run: |
+          node --check script.js
+          node --check live-mode.js
+          grep -q 'baseParams(dp(126), dp(168))' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'attachCameraDirectGesture' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'setTouchable(cameraRoot, cameraParams, true)' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'setTouchable(teleRoot, teleParams, true)' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          ! grep -A45 'private void attachMoveHandle' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java | grep -q 'recording && !paused'
+      - name: Installer dépendances audit
+        run: npm ci
+      - name: Audit statique
+        run: npm test
+      - name: Installer Android SDK 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - name: Tester déplacements et redimensionnements
+        run: gradle :app:testDebugUnitTest --tests 'com.chasmet.grokteleprompter.LiveOverlayGeometryTest' --stacktrace
+      - name: Lint et compiler APK
+        run: gradle :app:lintDebug :app:assembleDebug --stacktrace
+      - name: Préparer APK v2.16.1
+        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.16.1-Live-Touch.apk
+      - name: Publier APK testé
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grok-Teleprompter-v2.16.1-Live-Touch
+          path: Grok-Teleprompter-v2.16.1-Live-Touch.apk
+          if-no-files-found: error
+          retention-days: 30
