@@ -34,7 +34,7 @@
       <div class="liveSetupCard">
         <div class="liveBadge">LIVE FOND D’ÉCRAN VERT</div>
         <h2>Caméra + téléprompteur au-dessus de toutes tes applis</h2>
-        <p>Tu peux revenir sur l’accueil, ouvrir Chrome, Bybit ou une autre application. La caméra détourée, le texte et les commandes restent visibles.</p>
+        <p>Tu peux revenir sur l’accueil, ouvrir Chrome, Bybit ou une autre application. La caméra détourée reste dans la vidéo ; l’interface opérateur disparaît pendant REC pour garantir une image propre sur Honor/Huawei.</p>
         <label class="liveField">Texte du téléprompteur
           <textarea id="liveScriptInput" spellcheck="true"></textarea>
         </label>
@@ -46,15 +46,15 @@
         </label>
         <div class="liveFeatureGrid">
           <span>✓ Caméra détourée flottante</span>
-          <span>✓ Téléprompteur flottant</span>
-          <span>✓ REC / Pause / Reprendre / Stop</span>
+          <span>✓ Téléprompteur visible avant REC et en Pause</span>
+          <span>✓ REC propre · commandes invisibles mais tactiles</span>
           <span>✓ Déplacement + redimensionnement en pause</span>
           <span>✓ Navigation libre dans le téléphone</span>
           <span>✓ Micro intégré du téléphone</span>
         </div>
         <button id="launchLiveOverlay" class="launchLiveOverlay" type="button">LANCER LE LIVE SUR MON ÉCRAN</button>
         <button id="closeLiveSetup" class="closeLiveSetup" type="button">Retour aux 3 modes</button>
-        <p class="livePermissionHint">Au premier lancement Android demandera l’autorisation d’afficher par-dessus les applis puis l’autorisation de capturer l’écran.</p>
+        <p class="livePermissionHint">Pendant REC, les emplacements Pause et Stop du petit panneau restent tactiles. Mets en pause pour faire réapparaître le téléprompteur et le chrono sans les ajouter au MP4.</p>
       </div>`;
     document.body.appendChild(setup);
 

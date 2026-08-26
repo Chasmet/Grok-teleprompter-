@@ -1,5 +1,53 @@
 # Audit complet — Grok Téléprompteur Studio 2.12.0
 
+## Correctif de stabilité Live 2.16.5 — 26 août 2026
+
+Le MP4 réel `1000143936.mp4` est entièrement noir pendant 6,2 secondes. Il confirme que
+`SurfaceView.setSecure(true)` ne permet pas une exclusion transparente sur le téléphone
+cible : la surface sécurisée est remplacée par du noir. Le panneau de commandes utilisait
+en plus une surface `MATCH_PARENT` dans une fenêtre à hauteur dynamique, ce qui l'étendait
+à presque tout l'écran.
+
+- suppression complète des deux `SurfaceView` sécurisées et retour aux vues Android normales ;
+- hauteurs du panneau bornées à 116 dp au repos et 78 dp en REC/Pause ;
+- interface opérateur rendue transparente/invisible 250 ms avant le démarrage ou la reprise
+  de `MediaRecorder`, sans modifier la fenêtre de caméra détourée ;
+- Pause arrête d'abord l'encodeur, puis réaffiche téléprompteur, chrono et commandes ;
+- Reprendre masque d'abord l'interface, attend la composition de plusieurs trames propres,
+  puis relance l'encodeur ;
+- les positions tactiles Pause et Stop restent actives pendant que le panneau est transparent ;
+- les améliorations v2.16.4 de détourage, stabilisation, réutilisation mémoire et débit vidéo
+  sont conservées.
+
+Cette stratégie privilégie un MP4 propre et utilisable sur les constructeurs qui ne savent
+pas exclure une fenêtre visible d'une capture plein écran. Sur ces appareils, Android ne
+fournit pas d'API publique capable de montrer les mêmes pixels sur l'écran physique tout en
+les remplaçant par les pixels sous-jacents dans `MediaProjection`.
+
+## Tentative matérielle Live 2.16.4 — 26 août 2026
+
+Les deux MP4 réels `1000143917.mp4` et `1000143920.mp4` prouvent que le précédent
+`FLAG_SECURE` posé sur les fenêtres flottantes n'était pas respecté par le compositeur du
+téléphone : commandes, chrono et téléprompteur restaient encodés. Le mode Live ne s'appuie
+plus sur ce drapeau de fenêtre.
+
+- le téléprompteur et les commandes sont rendus dans deux `SurfaceView` translucides dont
+  la surface est marquée `setSecure(true)` avant son attachement ;
+- les vues tactiles ordinaires restent présentes mais totalement transparentes, afin de
+  conserver Pause, Stop, déplacement, redimensionnement et défilement manuel ;
+- la fenêtre de caméra n'est pas sécurisée et sa silhouette détourée reste enregistrable ;
+- le masque Live vise 24 i/s au lieu d'ajouter 66 ms après chaque inférence ;
+- les bitmaps, tableaux de masque et canvas sont réutilisés pour réduire les pauses GC ;
+- le masque reçoit un lissage temporel adaptatif et un affinage spatial sans traînée forte ;
+- la caméra demande une cadence stable proche de 30 i/s et la stabilisation vidéo si elle
+  est déclarée par le téléphone ;
+- le MP4 conserve H.264, passe à un débit cible adaptatif de 12 à 20 Mbit/s, et le micro
+  interne `CAMCORDER` reste imposé en AAC mono 48 kHz à 192 kbit/s.
+
+La validation automatique contrôle désormais la séparation entre surfaces privées et
+caméra enregistrable. La preuve définitive d'exclusion des pixels reste un test du MP4 sur
+le téléphone cible, car Android Lint et les tests JVM ne reproduisent pas SurfaceFlinger.
+
 Date : 22 juillet 2026
 
 ## Résultat

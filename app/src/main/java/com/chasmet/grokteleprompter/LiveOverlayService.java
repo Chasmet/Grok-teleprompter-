@@ -8,7 +8,6 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.ContentValues;
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
@@ -40,6 +39,7 @@ import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
 import android.util.DisplayMetrics;
+import android.util.Range;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
@@ -71,6 +71,8 @@ import java.util.Locale;
 public final class LiveOverlayService extends Service {
     public static final String ACTION_START = "com.chasmet.grokteleprompter.LIVE_START";
     public static final String ACTION_STOP = "com.chasmet.grokteleprompter.LIVE_STOP";
+    public static final String ACTION_TOGGLE_PAUSE = "com.chasmet.grokteleprompter.LIVE_TOGGLE_PAUSE";
+    public static final String ACTION_STOP_RECORDING = "com.chasmet.grokteleprompter.LIVE_STOP_RECORDING";
     public static final String EXTRA_RESULT_CODE = "resultCode";
     public static final String EXTRA_RESULT_DATA = "resultData";
     public static final String EXTRA_SCRIPT = "script";
@@ -79,6 +81,12 @@ public final class LiveOverlayService extends Service {
 
     private static final String CHANNEL_ID = "grok_live_overlay";
     private static final int NOTIFICATION_ID = 4217;
+    private static final int SEGMENTATION_WIDTH = 288;
+    private static final int SEGMENTATION_HEIGHT = 384;
+    private static final long SEGMENTATION_FRAME_INTERVAL_MS = 42L;
+    private static final long CAPTURE_UI_SETTLE_DELAY_MS = 250L;
+    private static final int CONTROLS_READY_HEIGHT_DP = 116;
+    private static final int CONTROLS_ACTIVE_HEIGHT_DP = 78;
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams cameraParams;
@@ -105,10 +113,26 @@ public final class LiveOverlayService extends Service {
     private Handler cameraHandler;
     private CameraDevice cameraDevice;
     private CameraCaptureSession cameraSession;
+    private Surface cameraPreviewSurface;
+    private CameraCharacteristics activeCameraCharacteristics;
     private int cameraFacing = CameraCharacteristics.LENS_FACING_FRONT;
     private boolean segmentationBusy;
     private boolean segmentationFrozen;
     private Segmenter segmenter;
+    private boolean serviceDestroyed;
+    private long segmentationFrameStartedAt;
+    private int[] liveAlphaPixels;
+    private float[] liveMaskValues;
+    private float[] liveMaskHistory;
+    private float[] liveMaskHorizontal;
+    private float[] liveMaskBlurred;
+    private Bitmap liveMaskBitmap;
+    private Bitmap liveCutoutBitmap;
+    private Canvas liveCutoutCanvas;
+    private boolean liveMaskHasHistory;
+    private final Rect liveTargetRect = new Rect();
+    private final Paint liveSourcePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final Paint liveAlphaPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
 
     private MediaProjection mediaProjection;
     private android.hardware.display.VirtualDisplay virtualDisplay;
@@ -117,6 +141,8 @@ public final class LiveOverlayService extends Service {
     private Uri outputUri;
     private boolean recording;
     private boolean paused;
+    private boolean recordingStarting;
+    private boolean resumePending;
     private boolean teleGestureActive;
     private final LiveRecordingClock recordingClock = new LiveRecordingClock();
 
@@ -158,32 +184,36 @@ public final class LiveOverlayService extends Service {
     private final Runnable segmentationLoop = new Runnable() {
         @Override
         public void run() {
+            if (serviceDestroyed) return;
             if (cameraTexture == null || !cameraTexture.isAvailable() || segmentationFrozen) {
-                mainHandler.postDelayed(this, 80L);
+                scheduleNextSegmentation(80L);
                 return;
             }
             if (segmentationBusy) {
-                mainHandler.postDelayed(this, 45L);
+                scheduleNextSegmentation(8L);
                 return;
             }
             Bitmap frame;
             try {
-                frame = cameraTexture.getBitmap(240, 320);
+                frame = cameraTexture.getBitmap(SEGMENTATION_WIDTH, SEGMENTATION_HEIGHT);
             } catch (Exception error) {
                 frame = null;
             }
             if (frame == null) {
-                mainHandler.postDelayed(this, 80L);
+                scheduleNextSegmentation(48L);
                 return;
             }
             segmentationBusy = true;
+            segmentationFrameStartedAt = android.os.SystemClock.uptimeMillis();
             Bitmap source = frame;
             segmenter.process(InputImage.fromBitmap(source, 0))
                     .addOnSuccessListener(mask -> renderMask(source, mask))
                     .addOnFailureListener(error -> source.recycle())
                     .addOnCompleteListener(task -> {
                         segmentationBusy = false;
-                        mainHandler.postDelayed(segmentationLoop, 66L);
+                        long processingMs = android.os.SystemClock.uptimeMillis() - segmentationFrameStartedAt;
+                        scheduleNextSegmentation(Math.max(0L,
+                                SEGMENTATION_FRAME_INTERVAL_MS - processingMs));
                     });
         }
     };
@@ -192,6 +222,7 @@ public final class LiveOverlayService extends Service {
     public void onCreate() {
         super.onCreate();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+        liveAlphaPaint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
         SelfieSegmenterOptions options = new SelfieSegmenterOptions.Builder()
                 .setDetectorMode(SelfieSegmenterOptions.STREAM_MODE)
                 .enableRawSizeMask()
@@ -209,6 +240,14 @@ public final class LiveOverlayService extends Service {
         if (ACTION_STOP.equals(intent.getAction())) {
             stopSelf();
             return START_NOT_STICKY;
+        }
+        if (ACTION_TOGGLE_PAUSE.equals(intent.getAction())) {
+            togglePause();
+            return START_STICKY;
+        }
+        if (ACTION_STOP_RECORDING.equals(intent.getAction())) {
+            stopRecordingInternal(true);
+            return START_STICKY;
         }
         if (!ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
 
@@ -246,12 +285,13 @@ public final class LiveOverlayService extends Service {
 
         createOverlays();
         startCamera();
-        mainHandler.post(segmentationLoop);
+        scheduleNextSegmentation(0L);
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        serviceDestroyed = true;
         mainHandler.removeCallbacksAndMessages(null);
         stopRecordingInternal(false);
         closeCamera();
@@ -267,6 +307,7 @@ public final class LiveOverlayService extends Service {
         removeOverlay(cameraRoot);
         removeOverlay(teleRoot);
         removeOverlay(controlsRoot);
+        releaseSegmentationBuffers();
         if (cameraThread != null) {
             cameraThread.quitSafely();
             cameraThread = null;
@@ -292,20 +333,7 @@ public final class LiveOverlayService extends Service {
     }
 
     private void startLiveForeground() {
-        Intent openIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                openIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-        Notification notification = new Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle("Grok Téléprompteur · Live")
-                .setContentText("Caméra et téléprompteur flottants actifs")
-                .setOngoing(true)
-                .setContentIntent(pendingIntent)
-                .build();
+        Notification notification = buildLiveNotification();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -316,6 +344,72 @@ public final class LiveOverlayService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
+    }
+
+    private Notification buildLiveNotification() {
+        Intent openIntent = new Intent(this, MainActivity.class);
+        PendingIntent openPendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle("Grok Téléprompteur · Live")
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(openPendingIntent);
+
+        if (recording) {
+            long nowElapsed = android.os.SystemClock.elapsedRealtime();
+            long elapsedMs = recordingClock.elapsedMs(nowElapsed);
+            builder.setContentText(paused
+                    ? "Pause " + recordingClock.format(nowElapsed) + " · interface visible"
+                    : "REC propre · Pause et Stop disponibles")
+                    .setWhen(System.currentTimeMillis() - elapsedMs)
+                    .setUsesChronometer(!paused);
+
+            Intent pauseIntent = new Intent(this, LiveOverlayService.class)
+                    .setAction(ACTION_TOGGLE_PAUSE);
+            PendingIntent pausePendingIntent = PendingIntent.getService(
+                    this,
+                    1,
+                    pauseIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(paused ? android.R.drawable.ic_media_play : android.R.drawable.ic_media_pause,
+                    paused ? "Reprendre" : "Pause", pausePendingIntent);
+
+            Intent stopRecordingIntent = new Intent(this, LiveOverlayService.class)
+                    .setAction(ACTION_STOP_RECORDING);
+            PendingIntent stopRecordingPendingIntent = PendingIntent.getService(
+                    this,
+                    2,
+                    stopRecordingIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                    "Stop", stopRecordingPendingIntent);
+        } else {
+            builder.setContentText("Caméra et téléprompteur flottants prêts");
+
+            Intent closeIntent = new Intent(this, LiveOverlayService.class).setAction(ACTION_STOP);
+            PendingIntent closePendingIntent = PendingIntent.getService(
+                    this,
+                    3,
+                    closeIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                    "Fermer", closePendingIntent);
+        }
+        return builder.build();
+    }
+
+    private void refreshLiveNotification() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.notify(NOTIFICATION_ID, buildLiveNotification());
     }
 
     private void createOverlays() {
@@ -332,16 +426,14 @@ public final class LiveOverlayService extends Service {
 
         int teleWidth = Math.min(metrics.widthPixels - dp(28), dp(238));
         teleParams = baseParams(Math.max(dp(170), teleWidth), dp(165));
-        excludeFromRecording(teleParams);
         teleParams.gravity = Gravity.TOP | Gravity.START;
         teleParams.x = Math.max(dp(8), (metrics.widthPixels - teleParams.width) / 2);
         teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
         teleRoot = buildTeleWindow();
         windowManager.addView(teleRoot, teleParams);
 
-        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
-        controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
-        excludeFromRecording(controlsParams);
+        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(220));
+        controlsParams = baseParams(Math.max(dp(196), controlsWidth), dp(CONTROLS_READY_HEIGHT_DP));
         controlsParams.gravity = Gravity.TOP | Gravity.START;
         controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
         controlsParams.y = dp(22);
@@ -351,11 +443,6 @@ public final class LiveOverlayService extends Service {
 
         updateInteractivity();
         updateControls();
-    }
-
-    private void excludeFromRecording(WindowManager.LayoutParams params) {
-        // Keep this overlay visible on the phone while excluding it from screenshots/MediaProjection.
-        params.flags |= WindowManager.LayoutParams.FLAG_SECURE;
     }
 
     private WindowManager.LayoutParams baseParams(int width, int height) {
@@ -457,7 +544,7 @@ public final class LiveOverlayService extends Service {
 
         statusText = new TextView(this);
         statusText.setTextColor(Color.WHITE);
-        statusText.setTextSize(12);
+        statusText.setTextSize(10);
         statusText.setGravity(Gravity.CENTER);
         statusText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
         root.addView(statusText, new LinearLayout.LayoutParams(
@@ -801,31 +888,55 @@ public final class LiveOverlayService extends Service {
     }
 
     private void updateRecordingChrome() {
-        float chromeAlpha = recording ? 0f : 1f;
+        boolean operatorUiVisible = operatorUiVisible();
+        float chromeAlpha = operatorUiVisible ? 1f : 0f;
         if (cameraMoveHandle != null) cameraMoveHandle.setAlpha(chromeAlpha);
         if (cameraResizeHandle != null) cameraResizeHandle.setAlpha(chromeAlpha);
         if (teleMoveHandle != null) teleMoveHandle.setAlpha(chromeAlpha);
         if (teleResizeHandle != null) teleResizeHandle.setAlpha(chromeAlpha);
 
         if (cameraRoot != null) {
-            cameraRoot.setBackground(recording
-                    ? null
-                    : roundedDrawable(0x18000000, 0xCCFFFFFF, dp(15), dp(2)));
+            cameraRoot.setBackground(operatorUiVisible
+                    ? roundedDrawable(0x18000000, 0xCCFFFFFF, dp(15), dp(2))
+                    : null);
         }
         if (teleRoot != null) {
-            teleRoot.setBackground(recording
-                    ? null
-                    : roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
+            teleRoot.setVisibility(operatorUiVisible
+                    ? android.view.View.VISIBLE
+                    : android.view.View.INVISIBLE);
+            teleRoot.setBackground(operatorUiVisible
+                    ? roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2))
+                    : null);
         }
         if (tuningRow != null) {
-            tuningRow.setVisibility(recording ? android.view.View.GONE : android.view.View.VISIBLE);
+            tuningRow.setVisibility(!recording && !recordingStarting
+                    ? android.view.View.VISIBLE
+                    : android.view.View.GONE);
         }
-        if (controlsRoot != null) controlsRoot.requestLayout();
+        if (controlsRoot != null) {
+            // Alpha nul conserve deux zones tactiles compactes aux mêmes emplacements
+            // (Pause et Stop) sans écrire le moindre pixel dans MediaProjection.
+            controlsRoot.setAlpha(operatorUiVisible ? 1f : 0f);
+        }
+        if (controlsParams != null && controlsRoot != null) {
+            int targetHeight = dp(!recording && !recordingStarting
+                    ? CONTROLS_READY_HEIGHT_DP
+                    : CONTROLS_ACTIVE_HEIGHT_DP);
+            if (controlsParams.height != targetHeight) {
+                controlsParams.height = targetHeight;
+                try { windowManager.updateViewLayout(controlsRoot, controlsParams); }
+                catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private boolean operatorUiVisible() {
+        return !recordingStarting && !resumePending && (!recording || paused);
     }
 
     private void updateInteractivity() {
         setTouchable(cameraRoot, cameraParams, true);
-        setTouchable(teleRoot, teleParams, true);
+        setTouchable(teleRoot, teleParams, operatorUiVisible());
         setTouchable(controlsRoot, controlsParams, true);
     }
 
@@ -858,18 +969,29 @@ public final class LiveOverlayService extends Service {
         try {
             CameraManager manager = (CameraManager) getSystemService(CAMERA_SERVICE);
             String selected = null;
+            CameraCharacteristics selectedCharacteristics = null;
             for (String id : manager.getCameraIdList()) {
-                Integer facing = manager.getCameraCharacteristics(id).get(CameraCharacteristics.LENS_FACING);
+                CameraCharacteristics characteristics = manager.getCameraCharacteristics(id);
+                Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
                 if (facing != null && facing == cameraFacing) {
                     selected = id;
+                    selectedCharacteristics = characteristics;
                     break;
                 }
             }
-            if (selected == null && manager.getCameraIdList().length > 0) selected = manager.getCameraIdList()[0];
+            if (selected == null && manager.getCameraIdList().length > 0) {
+                selected = manager.getCameraIdList()[0];
+                selectedCharacteristics = manager.getCameraCharacteristics(selected);
+            }
             if (selected == null) return;
+            activeCameraCharacteristics = selectedCharacteristics;
             manager.openCamera(selected, new CameraDevice.StateCallback() {
                 @Override
                 public void onOpened(@NonNull CameraDevice camera) {
+                    if (serviceDestroyed) {
+                        camera.close();
+                        return;
+                    }
                     cameraDevice = camera;
                     createCameraSession();
                 }
@@ -897,14 +1019,33 @@ public final class LiveOverlayService extends Service {
             android.graphics.SurfaceTexture texture = cameraTexture.getSurfaceTexture();
             if (texture == null) return;
             texture.setDefaultBufferSize(640, 480);
+            if (cameraPreviewSurface != null) {
+                try { cameraPreviewSurface.release(); } catch (Exception ignored) {}
+            }
             Surface surface = new Surface(texture);
+            cameraPreviewSurface = surface;
             CaptureRequest.Builder builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             builder.addTarget(surface);
             builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
+            Range<Integer> stableFps = selectStableCameraFps(activeCameraCharacteristics);
+            if (stableFps != null) {
+                builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, stableFps);
+            }
+            if (supportsMode(activeCameraCharacteristics,
+                    CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES,
+                    CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON)) {
+                builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE,
+                        CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON);
+            }
             cameraDevice.createCaptureSession(Arrays.asList(surface), new CameraCaptureSession.StateCallback() {
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession session) {
+                    if (serviceDestroyed || cameraDevice == null) {
+                        session.close();
+                        return;
+                    }
                     cameraSession = session;
                     try { session.setRepeatingRequest(builder.build(), null, cameraHandler); }
                     catch (Exception ignored) {}
@@ -921,7 +1062,39 @@ public final class LiveOverlayService extends Service {
                 ? CameraCharacteristics.LENS_FACING_BACK
                 : CameraCharacteristics.LENS_FACING_FRONT;
         if (cameraCutout != null) cameraCutout.setScaleX(cameraFacing == CameraCharacteristics.LENS_FACING_FRONT ? -1f : 1f);
+        liveMaskHasHistory = false;
         openCamera();
+    }
+
+    private Range<Integer> selectStableCameraFps(CameraCharacteristics characteristics) {
+        if (characteristics == null) return null;
+        Range<Integer>[] ranges = characteristics.get(
+                CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES);
+        if (ranges == null || ranges.length == 0) return null;
+        Range<Integer> best = ranges[0];
+        int bestScore = Integer.MIN_VALUE;
+        for (Range<Integer> range : ranges) {
+            int upper = range.getUpper();
+            int lower = range.getLower();
+            int score = (upper >= 30 ? 10_000 : 0)
+                    - Math.abs(upper - 30) * 100
+                    - Math.abs(lower - 24) * 4;
+            if (lower == 30 && upper == 30) score += 300;
+            if (score > bestScore) {
+                bestScore = score;
+                best = range;
+            }
+        }
+        return best;
+    }
+
+    private boolean supportsMode(CameraCharacteristics characteristics,
+                                 CameraCharacteristics.Key<int[]> key, int requested) {
+        if (characteristics == null) return false;
+        int[] modes = characteristics.get(key);
+        if (modes == null) return false;
+        for (int mode : modes) if (mode == requested) return true;
+        return false;
     }
 
     private void closeCameraDeviceOnly() {
@@ -933,6 +1106,10 @@ public final class LiveOverlayService extends Service {
             try { cameraDevice.close(); } catch (Exception ignored) {}
             cameraDevice = null;
         }
+        if (cameraPreviewSurface != null) {
+            try { cameraPreviewSurface.release(); } catch (Exception ignored) {}
+            cameraPreviewSurface = null;
+        }
     }
 
     private void closeCamera() {
@@ -940,42 +1117,157 @@ public final class LiveOverlayService extends Service {
     }
 
     private void renderMask(Bitmap source, SegmentationMask mask) {
+        if (serviceDestroyed) {
+            if (!source.isRecycled()) source.recycle();
+            return;
+        }
         try {
             int mw = mask.getWidth();
             int mh = mask.getHeight();
+            ensureSegmentationBuffers(mw, mh, source.getWidth(), source.getHeight());
             ByteBuffer bytes = mask.getBuffer();
             bytes.rewind();
             FloatBuffer buffer = bytes.order(ByteOrder.nativeOrder()).asFloatBuffer();
-            int[] alphaPixels = new int[mw * mh];
-            for (int i = 0; i < alphaPixels.length && buffer.hasRemaining(); i++) {
-                float confidence = buffer.get();
-                float normalized = Math.max(0f, Math.min(1f, (confidence - .22f) / .60f));
-                int alpha = Math.round(normalized * 255f);
-                alphaPixels[i] = (alpha << 24) | 0x00FFFFFF;
+            int count = mw * mh;
+            for (int i = 0; i < count && buffer.hasRemaining(); i++) {
+                float value = clamp01(buffer.get());
+                if (liveMaskHasHistory) {
+                    float history = liveMaskHistory[i];
+                    float difference = Math.abs(value - history);
+                    float historyWeight;
+                    if (difference < .04f) historyWeight = .24f;
+                    else if (difference < .10f) historyWeight = .14f;
+                    else if (difference < .20f) historyWeight = .05f;
+                    else historyWeight = .008f;
+                    // Une disparition doit rester rapide pour ne pas laisser de silhouette fantôme.
+                    if (value < history && difference > .08f) historyWeight *= .42f;
+                    value = value * (1f - historyWeight) + history * historyWeight;
+                }
+                liveMaskValues[i] = value;
+                liveMaskHistory[i] = value;
             }
-            Bitmap alpha = Bitmap.createBitmap(alphaPixels, mw, mh, Bitmap.Config.ARGB_8888);
-            Bitmap output = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(output);
-            Rect target = new Rect(0, 0, output.getWidth(), output.getHeight());
-            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
-            canvas.drawBitmap(source, null, target, paint);
-            paint.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-            canvas.drawBitmap(alpha, null, target, paint);
-            paint.setXfermode(null);
-            cameraCutout.setImageBitmap(output);
-            source.recycle();
-            alpha.recycle();
+            liveMaskHasHistory = true;
+            blurMask(liveMaskValues, liveMaskHorizontal, liveMaskBlurred, mw, mh);
+
+            for (int i = 0; i < count; i++) {
+                float value = liveMaskValues[i];
+                float sharp = clamp01(value + .58f * (value - liveMaskBlurred[i]));
+                float edge = clamp01((sharp - .34f) / .29f);
+                float alpha = edge * edge * (3f - 2f * edge);
+                if (alpha <= .025f) alpha = 0f;
+                else if (alpha >= .975f) alpha = 1f;
+                int alphaByte = Math.round(alpha * 255f);
+                liveAlphaPixels[i] = (alphaByte << 24) | 0x00FFFFFF;
+            }
+
+            liveMaskBitmap.setPixels(liveAlphaPixels, 0, mw, 0, 0, mw, mh);
+            liveCutoutCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            liveTargetRect.set(0, 0, liveCutoutBitmap.getWidth(), liveCutoutBitmap.getHeight());
+            liveCutoutCanvas.drawBitmap(source, null, liveTargetRect, liveSourcePaint);
+            liveCutoutCanvas.drawBitmap(liveMaskBitmap, null, liveTargetRect, liveAlphaPaint);
+            if (cameraCutout.getTag() != liveCutoutBitmap) {
+                cameraCutout.setImageBitmap(liveCutoutBitmap);
+                cameraCutout.setTag(liveCutoutBitmap);
+            } else {
+                cameraCutout.invalidate();
+            }
         } catch (Exception error) {
-            source.recycle();
+            // Conserver la dernière silhouette valable si une seule trame échoue.
+        } finally {
+            if (!source.isRecycled()) source.recycle();
         }
     }
 
+    private void ensureSegmentationBuffers(int maskWidth, int maskHeight,
+                                           int outputWidth, int outputHeight) {
+        int count = maskWidth * maskHeight;
+        if (liveAlphaPixels == null || liveAlphaPixels.length != count) {
+            liveAlphaPixels = new int[count];
+            liveMaskValues = new float[count];
+            liveMaskHistory = new float[count];
+            liveMaskHorizontal = new float[count];
+            liveMaskBlurred = new float[count];
+            liveMaskHasHistory = false;
+            if (liveMaskBitmap != null && !liveMaskBitmap.isRecycled()) liveMaskBitmap.recycle();
+            liveMaskBitmap = Bitmap.createBitmap(maskWidth, maskHeight, Bitmap.Config.ARGB_8888);
+        }
+        if (liveCutoutBitmap == null || liveCutoutBitmap.isRecycled()
+                || liveCutoutBitmap.getWidth() != outputWidth
+                || liveCutoutBitmap.getHeight() != outputHeight) {
+            if (liveCutoutBitmap != null && !liveCutoutBitmap.isRecycled()) liveCutoutBitmap.recycle();
+            liveCutoutBitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888);
+            liveCutoutCanvas = new Canvas(liveCutoutBitmap);
+            if (cameraCutout != null) cameraCutout.setTag(null);
+        }
+    }
+
+    private void blurMask(float[] source, float[] horizontal, float[] output,
+                          int width, int height) {
+        for (int y = 0; y < height; y++) {
+            int row = y * width;
+            for (int x = 0; x < width; x++) {
+                horizontal[row + x] = (source[row + Math.max(0, x - 1)]
+                        + 2f * source[row + x]
+                        + source[row + Math.min(width - 1, x + 1)]) * .25f;
+            }
+        }
+        for (int y = 0; y < height; y++) {
+            int previous = Math.max(0, y - 1) * width;
+            int row = y * width;
+            int next = Math.min(height - 1, y + 1) * width;
+            for (int x = 0; x < width; x++) {
+                output[row + x] = (horizontal[previous + x]
+                        + 2f * horizontal[row + x]
+                        + horizontal[next + x]) * .25f;
+            }
+        }
+    }
+
+    private void scheduleNextSegmentation(long delayMs) {
+        mainHandler.removeCallbacks(segmentationLoop);
+        if (!serviceDestroyed && segmenter != null) {
+            mainHandler.postDelayed(segmentationLoop, Math.max(0L, delayMs));
+        }
+    }
+
+    private void releaseSegmentationBuffers() {
+        if (cameraCutout != null) {
+            cameraCutout.setImageDrawable(null);
+            cameraCutout.setTag(null);
+        }
+        if (liveMaskBitmap != null && !liveMaskBitmap.isRecycled()) liveMaskBitmap.recycle();
+        if (liveCutoutBitmap != null && !liveCutoutBitmap.isRecycled()) liveCutoutBitmap.recycle();
+        liveMaskBitmap = null;
+        liveCutoutBitmap = null;
+        liveCutoutCanvas = null;
+        liveAlphaPixels = null;
+        liveMaskValues = null;
+        liveMaskHistory = null;
+        liveMaskHorizontal = null;
+        liveMaskBlurred = null;
+        liveMaskHasHistory = false;
+    }
+
+    private float clamp01(float value) {
+        return Math.max(0f, Math.min(1f, value));
+    }
+
     private void startRecording() {
-        if (recording || mediaProjection == null) return;
+        if (recording || recordingStarting || mediaProjection == null) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             toast("Autorise le microphone dans l’application");
             return;
         }
+        recordingStarting = true;
+        updateInteractivity();
+        updateControls();
+        // Laisser SurfaceFlinger composer au moins plusieurs trames sans interface
+        // avant de connecter l'encodeur. Cela évite tout flash de commandes au début.
+        mainHandler.postDelayed(this::startRecordingAfterUiSettled, CAPTURE_UI_SETTLE_DELAY_MS);
+    }
+
+    private void startRecordingAfterUiSettled() {
+        if (!recordingStarting || serviceDestroyed || mediaProjection == null) return;
         try {
             prepareOutput();
             DisplayMetrics metrics = new DisplayMetrics();
@@ -994,10 +1286,12 @@ public final class LiveOverlayService extends Service {
             mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
             mediaRecorder.setVideoSize(width, height);
             mediaRecorder.setVideoFrameRate(30);
-            mediaRecorder.setVideoEncodingBitRate(12_000_000);
+            int videoBitRate = Math.min(20_000_000,
+                    Math.max(12_000_000, width * height * 5));
+            mediaRecorder.setVideoEncodingBitRate(videoBitRate);
             mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             mediaRecorder.setAudioSamplingRate(48_000);
-            mediaRecorder.setAudioEncodingBitRate(160_000);
+            mediaRecorder.setAudioEncodingBitRate(192_000);
             mediaRecorder.setAudioChannels(1);
             preferBuiltInMicrophone(mediaRecorder);
             mediaRecorder.prepare();
@@ -1018,10 +1312,12 @@ public final class LiveOverlayService extends Service {
                 virtualDisplay.setSurface(recorderSurface);
             }
             mediaRecorder.start();
+            recordingStarting = false;
             recording = true;
             paused = false;
             recordingClock.start(android.os.SystemClock.elapsedRealtime());
             segmentationFrozen = false;
+            scheduleNextSegmentation(0L);
             teleOffset = 0f;
             teleLastFrame = 0L;
             applyTeleOffset();
@@ -1031,15 +1327,16 @@ public final class LiveOverlayService extends Service {
             mainHandler.post(recordingTimerLoop);
             updateInteractivity();
             updateControls();
-            toast("Enregistrement Live lancé");
+            refreshLiveNotification();
         } catch (Exception error) {
+            recordingStarting = false;
             cleanupRecorderFailure();
             toast("Impossible de lancer l’enregistrement Live");
         }
     }
 
     private void togglePause() {
-        if (!recording || mediaRecorder == null) return;
+        if (!recording || mediaRecorder == null || resumePending) return;
         try {
             if (!paused) {
                 mediaRecorder.pause();
@@ -1047,26 +1344,54 @@ public final class LiveOverlayService extends Service {
                 recordingClock.pause(android.os.SystemClock.elapsedRealtime());
                 segmentationFrozen = true;
                 mainHandler.removeCallbacks(teleScrollLoop);
+                scheduleNextSegmentation(120L);
+                updateInteractivity();
+                updateControls();
+                refreshLiveNotification();
             } else {
-                mediaRecorder.resume();
-                paused = false;
-                recordingClock.resume(android.os.SystemClock.elapsedRealtime());
-                segmentationFrozen = false;
-                teleLastFrame = 0L;
-                mainHandler.post(teleScrollLoop);
-                mainHandler.post(segmentationLoop);
+                resumePending = true;
+                updateInteractivity();
+                updateControls();
+                // Masquer d'abord téléprompteur et commandes, puis reprendre l'encodeur.
+                mainHandler.postDelayed(this::resumeRecordingAfterUiSettled,
+                        CAPTURE_UI_SETTLE_DELAY_MS);
             }
+        } catch (Exception error) {
+            resumePending = false;
             updateInteractivity();
             updateControls();
-        } catch (Exception error) {
             toast("Pause Live indisponible sur ce téléphone");
         }
     }
 
+    private void resumeRecordingAfterUiSettled() {
+        if (!resumePending || !recording || !paused || mediaRecorder == null || serviceDestroyed) return;
+        try {
+            mediaRecorder.resume();
+            resumePending = false;
+            paused = false;
+            recordingClock.resume(android.os.SystemClock.elapsedRealtime());
+            segmentationFrozen = false;
+            teleLastFrame = 0L;
+            mainHandler.post(teleScrollLoop);
+            scheduleNextSegmentation(0L);
+            updateInteractivity();
+            updateControls();
+            refreshLiveNotification();
+        } catch (Exception error) {
+            resumePending = false;
+            updateInteractivity();
+            updateControls();
+            toast("Reprise Live indisponible sur ce téléphone");
+        }
+    }
+
     private void stopRecordingInternal(boolean notify) {
-        if (!recording && mediaRecorder == null) return;
+        if (!recording && !recordingStarting && mediaRecorder == null) return;
         mainHandler.removeCallbacks(teleScrollLoop);
         mainHandler.removeCallbacks(recordingTimerLoop);
+        recordingStarting = false;
+        resumePending = false;
         recording = false;
         paused = false;
         recordingClock.reset();
@@ -1087,6 +1412,7 @@ public final class LiveOverlayService extends Service {
         finishOutput(success);
         updateInteractivity();
         updateControls();
+        refreshLiveNotification();
         if (notify && success) toast("Vidéo Live enregistrée dans Films/Grok Téléprompteur Live");
     }
 
@@ -1124,6 +1450,8 @@ public final class LiveOverlayService extends Service {
 
     private void cleanupRecorderFailure() {
         mainHandler.removeCallbacks(recordingTimerLoop);
+        recordingStarting = false;
+        resumePending = false;
         recording = false;
         paused = false;
         recordingClock.reset();
@@ -1135,6 +1463,7 @@ public final class LiveOverlayService extends Service {
         finishOutput(false);
         updateInteractivity();
         updateControls();
+        refreshLiveNotification();
     }
 
     private void preferBuiltInMicrophone(MediaRecorder recorder) {
@@ -1152,18 +1481,21 @@ public final class LiveOverlayService extends Service {
 
     private void updateControls() {
         if (recButton == null) return;
-        recButton.setEnabled(!recording);
-        pauseButton.setEnabled(recording);
+        recButton.setEnabled(!recording && !recordingStarting);
+        pauseButton.setEnabled(recording && !resumePending);
         stopButton.setEnabled(recording);
-        pauseButton.setText(paused ? "▶ Reprendre" : "Ⅱ Pause");
-        updateRecordingChrome();
-        if (!recording) {
-            statusText.setText("✥ LIVE prêt · déplace tout · V" + speed);
+        pauseButton.setText(resumePending ? "… Reprise" : (paused ? "▶ Repr." : "Ⅱ Pause"));
+        if (recordingStarting) {
+            statusText.setText("Préparation de la capture propre…");
+        } else if (!recording) {
+            statusText.setText("✥ PRÊT · REC propre · V" + speed);
         } else {
             String elapsed = recordingClock.format(android.os.SystemClock.elapsedRealtime());
-            if (paused) statusText.setText("Ⅱ PAUSE " + elapsed + " · gestes actifs");
-            else statusText.setText("● REC " + elapsed + " · gestes actifs");
+            if (resumePending) statusText.setText("Reprise propre…");
+            else if (paused) statusText.setText("Ⅱ PAUSE " + elapsed + " · interface visible");
+            else statusText.setText("● REC " + elapsed + " · interface masquée");
         }
+        updateRecordingChrome();
     }
 
     private void removeOverlay(android.view.View view) {
