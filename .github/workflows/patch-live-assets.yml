@@ -16,33 +16,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch files
+      - name: Patch index
         run: |
           python3 - <<'PY'
           from pathlib import Path
-
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
           old = '  <link rel="stylesheet" href="style.css">\n  <script src="script.js" defer></script>\n'
           new = '  <link rel="stylesheet" href="style.css">\n  <link rel="stylesheet" href="live-mode.css">\n  <script src="script.js" defer></script>\n  <script src="live-mode.js" defer></script>\n'
           if old in s:
               p.write_text(s.replace(old, new, 1), encoding='utf-8')
-
-          p = Path('.github/workflows/build-apk.yml')
-          s = p.read_text(encoding='utf-8')
-          if 'node --check live-mode.js' not in s:
-              s = s.replace('        run: node --check script.js\n', '        run: |\n          node --check script.js\n          node --check live-mode.js\n', 1)
-          s = s.replace('Grok-Teleprompter-v2.15.1.apk', 'Grok-Teleprompter-v2.16.0.apk')
-          p.write_text(s, encoding='utf-8')
+          elif 'live-mode.js' not in s:
+              raise SystemExit('Balises index introuvables')
           PY
-      - name: Commit
+      - name: Commit index
         run: |
           if git diff --quiet; then exit 0; fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html .github/workflows/build-apk.yml
-          git commit -m "feat: load live mode assets and publish v2.16"
+          git add index.html
+          git commit -m "feat: load live mode chooser"
           git pull --rebase origin main
           git push origin HEAD:main
-      - name: Done
-        run: echo "live assets patched"
