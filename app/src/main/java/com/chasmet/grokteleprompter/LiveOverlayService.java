@@ -88,9 +88,12 @@ public final class LiveOverlayService extends Service {
     private WindowManager.LayoutParams cameraParams;
     private WindowManager.LayoutParams teleParams;
     private WindowManager.LayoutParams controlsParams;
+    private WindowManager.LayoutParams controlsDisplayParams;
     private FrameLayout cameraRoot;
     private FrameLayout teleRoot;
     private LinearLayout controlsRoot;
+    private FrameLayout controlsDisplayRoot;
+    private SurfaceView controlsPrivateSurface;
     private TextureView cameraTexture;
     private ImageView cameraCutout;
     private TextView teleText;
@@ -275,6 +278,7 @@ public final class LiveOverlayService extends Service {
         removeOverlay(cameraRoot);
         removeOverlay(teleRoot);
         removeOverlay(controlsRoot);
+        removeOverlay(controlsDisplayRoot);
         if (cameraThread != null) {
             cameraThread.quitSafely();
             cameraThread = null;
@@ -345,33 +349,34 @@ public final class LiveOverlayService extends Service {
         teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
         teleRoot = buildTeleWindow();
         windowManager.addView(teleRoot, teleParams);
-        teleRoot.post(() -> markWindowSkipScreenshot(teleRoot));
 
-        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
-        controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
+        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(218));
+        controlsParams = baseParams(Math.max(dp(196), controlsWidth), dp(116));
         controlsParams.gravity = Gravity.TOP | Gravity.START;
         controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
         controlsParams.y = dp(22);
         controlsRoot = buildControlsWindow();
         windowManager.addView(controlsRoot, controlsParams);
-        controlsRoot.post(() -> markWindowSkipScreenshot(controlsRoot));
         attachControlsMove(statusText);
+
+        controlsDisplayParams = baseParams(controlsParams.width, dp(76));
+        controlsDisplayParams.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
+        controlsDisplayParams.gravity = Gravity.TOP | Gravity.START;
+        controlsDisplayParams.x = controlsParams.x;
+        controlsDisplayParams.y = controlsParams.y;
+        controlsDisplayRoot = buildControlsDisplayWindow();
+        controlsDisplayRoot.setVisibility(android.view.View.GONE);
+        windowManager.addView(controlsDisplayRoot, controlsDisplayParams);
 
         updateInteractivity();
         updateControls();
     }
 
-    private boolean markWindowSkipScreenshot(android.view.View view) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || view == null || !view.isAttachedToWindow()) {
-            return false;
-        }
+    private boolean markSurfaceSkipScreenshot(SurfaceView view) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || view == null) return false;
         try {
-            Object viewRoot = HiddenApiBypass.invoke(android.view.View.class, view, "getViewRootImpl");
-            if (viewRoot == null) return false;
-            Object rawControl = HiddenApiBypass.invoke(viewRoot.getClass(), viewRoot, "getSurfaceControl");
-            if (!(rawControl instanceof SurfaceControl)) return false;
-            SurfaceControl control = (SurfaceControl) rawControl;
-            if (!control.isValid()) return false;
+            SurfaceControl control = view.getSurfaceControl();
+            if (control == null || !control.isValid()) return false;
             SurfaceControl.Transaction transaction = new SurfaceControl.Transaction();
             HiddenApiBypass.invoke(
                     SurfaceControl.Transaction.class,
@@ -383,7 +388,7 @@ public final class LiveOverlayService extends Service {
             transaction.apply();
             return true;
         } catch (Throwable ignored) {
-            // Important Huawei fallback: keep content visible instead of turning the recording black.
+            // Huawei-safe fallback: never secure the whole WindowManager root.
             return false;
         }
     }
@@ -445,6 +450,35 @@ public final class LiveOverlayService extends Service {
         root.setClipChildren(true);
         root.setBackground(roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
 
+        teleSecureSurface = new SurfaceView(this);
+        teleSecureSurface.setZOrderOnTop(true);
+        teleSecureSurface.setClickable(false);
+        teleSecureSurface.setFocusable(false);
+        teleSecureSurface.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+        teleSecureSurface.setVisibility(android.view.View.GONE);
+        teleSecureSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                markSurfaceSkipScreenshot(teleSecureSurface);
+                renderSecureTeleprompter();
+            }
+
+            @Override
+            public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
+                teleSecureLayout = null;
+                teleSecureLayoutWidth = -1;
+                markSurfaceSkipScreenshot(teleSecureSurface);
+                renderSecureTeleprompter();
+            }
+
+            @Override
+            public void surfaceDestroyed(@NonNull SurfaceHolder holder) {}
+        });
+        root.addView(teleSecureSurface, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+
         teleText = new TextView(this);
         teleText.setText(script);
         teleText.setTextColor(Color.WHITE);
@@ -477,6 +511,105 @@ public final class LiveOverlayService extends Service {
         root.addView(teleResizeHandle, resizeLp);
         attachResizeHandle(teleResizeHandle, root, teleParams, dp(150), dp(110));
         return root;
+    }
+
+    private FrameLayout buildControlsDisplayWindow() {
+        FrameLayout root = new FrameLayout(this);
+        root.setBackgroundColor(Color.TRANSPARENT);
+
+        controlsPrivateSurface = new SurfaceView(this);
+        controlsPrivateSurface.setZOrderOnTop(true);
+        controlsPrivateSurface.setClickable(false);
+        controlsPrivateSurface.setFocusable(false);
+        controlsPrivateSurface.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+        controlsPrivateSurface.setVisibility(android.view.View.GONE);
+        controlsPrivateSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                markSurfaceSkipScreenshot(controlsPrivateSurface);
+                renderPrivateControls();
+            }
+
+            @Override
+            public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
+                markSurfaceSkipScreenshot(controlsPrivateSurface);
+                renderPrivateControls();
+            }
+
+            @Override
+            public void surfaceDestroyed(@NonNull SurfaceHolder holder) {}
+        });
+        root.addView(controlsPrivateSurface, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
+        return root;
+    }
+
+    private void syncControlsDisplayPosition() {
+        if (controlsDisplayRoot == null || controlsDisplayParams == null || controlsParams == null) return;
+        controlsDisplayParams.x = controlsParams.x;
+        controlsDisplayParams.y = controlsParams.y;
+        controlsDisplayParams.width = controlsParams.width;
+        controlsDisplayParams.height = dp(76);
+        if (controlsDisplayRoot.isAttachedToWindow()) {
+            try { windowManager.updateViewLayout(controlsDisplayRoot, controlsDisplayParams); } catch (Exception ignored) {}
+        }
+    }
+
+    private void renderPrivateControls() {
+        if (!recording || controlsPrivateSurface == null) return;
+        SurfaceHolder holder = controlsPrivateSurface.getHolder();
+        Surface surface = holder.getSurface();
+        if (surface == null || !surface.isValid()) return;
+        Canvas canvas = null;
+        try {
+            canvas = holder.lockCanvas();
+            if (canvas == null) return;
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            float width = canvas.getWidth();
+            float height = canvas.getHeight();
+            Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(0xEE07111F);
+            canvas.drawRoundRect(0f, 0f, width, height, dp(14), dp(14), paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(dp(1));
+            paint.setColor(0xAA34D399);
+            canvas.drawRoundRect(dp(1), dp(1), width - dp(1), height - dp(1), dp(14), dp(14), paint);
+
+            paint.setStyle(Paint.Style.FILL);
+            paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+            paint.setTextAlign(Paint.Align.CENTER);
+            paint.setColor(Color.WHITE);
+            paint.setTextSize(dp(10));
+            String status = statusText == null ? (paused ? "Ⅱ PAUSE" : "● REC") : statusText.getText().toString();
+            canvas.drawText(status, width / 2f, dp(18), paint);
+
+            String[] labels = new String[] {"REC", paused ? "Reprendre" : "Pause", "Stop", "Fermer"};
+            float left = dp(5);
+            float gap = dp(4);
+            float top = dp(27);
+            float bottom = height - dp(5);
+            float buttonWidth = (width - left * 2f - gap * 3f) / 4f;
+            paint.setTextSize(dp(7));
+            for (int i = 0; i < labels.length; i++) {
+                float x1 = left + i * (buttonWidth + gap);
+                float x2 = x1 + buttonWidth;
+                paint.setColor(i == 0 ? 0x55334155 : 0x66334D99);
+                canvas.drawRoundRect(x1, top, x2, bottom, dp(9), dp(9), paint);
+                paint.setColor(Color.WHITE);
+                Paint.FontMetrics fm = paint.getFontMetrics();
+                float baseline = (top + bottom) / 2f - (fm.ascent + fm.descent) / 2f;
+                canvas.drawText(labels[i], (x1 + x2) / 2f, baseline, paint);
+            }
+        } catch (Throwable ignored) {
+        } finally {
+            if (canvas != null) {
+                try { holder.unlockCanvasAndPost(canvas); } catch (Throwable ignored) {}
+            }
+        }
     }
 
     private LinearLayout buildControlsWindow() {
@@ -703,6 +836,7 @@ public final class LiveOverlayService extends Service {
                     moveOverlay(controlsRoot, controlsParams, startX, startY,
                             Math.round(event.getRawX() - startRawX),
                             Math.round(event.getRawY() - startRawY));
+                    syncControlsDisplayPosition();
                     return true;
                 }
                 return true;
@@ -881,15 +1015,17 @@ public final class LiveOverlayService extends Service {
         }
         teleOffset = Math.max(0f, Math.min(teleOffset, max));
         teleText.setTranslationY(dp(70) - teleOffset);
+        if (recording) renderSecureTeleprompter();
     }
 
     private void changeFont(int delta) {
         fontSizeSp = clamp(fontSizeSp + delta, 20, 70);
+        if (teleText != null) teleText.setTextSize(fontSizeSp);
         teleSecureLayout = null;
         teleSecureLayoutWidth = -1;
         teleSecureLayoutFontSize = -1;
-        teleText.setTextSize(fontSizeSp);
-        teleText.post(this::applyTeleOffset);
+        applyTeleOffset();
+        updateControls();
     }
 
     private void changeSpeed(int delta) {
@@ -919,15 +1055,43 @@ public final class LiveOverlayService extends Service {
                     ? null
                     : roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
         }
-        if (teleText != null) {
-            teleText.setAlpha(1f);
+        if (teleText != null) teleText.setAlpha(recording ? 0f : 1f);
+        if (teleSecureSurface != null) {
+            teleSecureSurface.setVisibility(recording ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (recording) {
+                teleSecureSurface.post(() -> {
+                    markSurfaceSkipScreenshot(teleSecureSurface);
+                    renderSecureTeleprompter();
+                });
+            }
         }
-        if (teleRoot != null) teleRoot.post(() -> markWindowSkipScreenshot(teleRoot));
-        if (controlsRoot != null) controlsRoot.post(() -> markWindowSkipScreenshot(controlsRoot));
-        if (tuningRow != null) {
-            tuningRow.setVisibility(recording ? android.view.View.GONE : android.view.View.VISIBLE);
+
+        if (tuningRow != null) tuningRow.setVisibility(recording
+                ? android.view.View.GONE
+                : android.view.View.VISIBLE);
+
+        if (controlsRoot != null && controlsParams != null) {
+            controlsRoot.setAlpha(recording ? 0f : 1f);
+            int desiredHeight = recording ? dp(76) : dp(116);
+            if (controlsParams.height != desiredHeight) {
+                controlsParams.height = desiredHeight;
+                try { windowManager.updateViewLayout(controlsRoot, controlsParams); } catch (Exception ignored) {}
+            }
         }
-        if (controlsRoot != null) controlsRoot.requestLayout();
+
+        if (controlsDisplayRoot != null) {
+            controlsDisplayRoot.setVisibility(recording ? android.view.View.VISIBLE : android.view.View.GONE);
+        }
+        if (controlsPrivateSurface != null) {
+            controlsPrivateSurface.setVisibility(recording ? android.view.View.VISIBLE : android.view.View.GONE);
+            if (recording) {
+                controlsPrivateSurface.post(() -> {
+                    markSurfaceSkipScreenshot(controlsPrivateSurface);
+                    renderPrivateControls();
+                });
+            }
+        }
+        syncControlsDisplayPosition();
     }
 
     private void updateInteractivity() {
