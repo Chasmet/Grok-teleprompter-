@@ -1,0 +1,4 @@
+Grok Teleprompter v2.16.5 capture validation
+Source fix commit: 90e87d289d18ccd0aa2474cb3a70725eebc542c1
+Goal: keep Live teleprompter and controls visible locally while excluding them from MediaProjection without FLAG_SECURE or secure SurfaceView black output.
+Required: JS audit, mobile touch tests, Android lint, assembleDebug.
