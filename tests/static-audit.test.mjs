@@ -12,7 +12,6 @@ const nativeWorklet = fs.readFileSync(new URL('../native-audio-worklet.js', impo
 const androidBuild = fs.readFileSync(new URL('../app/build.gradle', import.meta.url), 'utf8');
 const serviceWorker = fs.readFileSync(new URL('../sw.js', import.meta.url), 'utf8');
 const liveService = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java', import.meta.url), 'utf8');
-const privateOverlay = fs.readFileSync(new URL('../app/src/main/java/com/chasmet/grokteleprompter/PrivateOverlaySurface.java', import.meta.url), 'utf8');
 
 test('every interface id is unique', () => {
   const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
@@ -189,19 +188,19 @@ test('native segmentation affects only the live camera and never imported media'
   assert.doesNotMatch(script, /segmentCameraFrame\([^\n]*mediaVideo/);
 });
 
-test('Live operator UI uses secure surfaces while the cut-out camera remains recordable', () => {
-  assert.match(privateOverlay, /extends SurfaceView/);
-  assert.match(privateOverlay, /setSecure\(true\)/);
-  assert.match(privateOverlay, /setZOrderOnTop\(true\)/);
-  assert.match(privateOverlay, /PixelFormat\.TRANSLUCENT/);
-  assert.match(liveService, /telePrivateSurface = new PrivateOverlaySurface/);
-  assert.match(liveService, /controlsPrivateSurface = new PrivateOverlaySurface/);
-  assert.match(liveService, /teleText\.setAlpha\(0f\)/);
-  assert.match(liveService, /content\.setAlpha\(0f\)/);
+test('Live compatible capture hides operator pixels without secure black surfaces', () => {
+  assert.match(liveService, /CAPTURE_UI_SETTLE_DELAY_MS = 250L/);
+  assert.match(liveService, /CONTROLS_READY_HEIGHT_DP = 116/);
+  assert.match(liveService, /CONTROLS_ACTIVE_HEIGHT_DP = 78/);
+  assert.match(liveService, /controlsRoot\.setAlpha\(operatorUiVisible \? 1f : 0f\)/);
+  assert.match(liveService, /teleRoot\.setVisibility\(operatorUiVisible/);
+  assert.match(liveService, /mainHandler\.postDelayed\(this::startRecordingAfterUiSettled/);
+  assert.match(liveService, /mainHandler\.postDelayed\(this::resumeRecordingAfterUiSettled/);
+  assert.match(liveService, /mediaRecorder\.pause\(\);[\s\S]*paused = true;[\s\S]*updateControls\(\)/);
   assert.match(liveService, /cameraRoot = buildCameraWindow\(\)/);
-  assert.doesNotMatch(liveService, /cameraPrivateSurface/);
+  assert.doesNotMatch(liveService, /PrivateOverlaySurface|SurfaceView|setSecure\(true\)/);
   assert.doesNotMatch(liveService, /FLAG_SECURE/);
-  assert.match(androidBuild, /versionName '2\.16\.4'/);
+  assert.match(androidBuild, /versionName '2\.16\.5'/);
 });
 
 test('Live cut-out rendering is paced, stabilized and allocation-conscious', () => {

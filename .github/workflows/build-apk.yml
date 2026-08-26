@@ -1,4 +1,4 @@
-name: Construire APK v2.16.4 Secure Smooth
+name: Construire APK v2.16.5 Stable Clean
 
 on:
   push:
@@ -36,17 +36,16 @@ jobs:
           node --check script.js
           node --check live-mode.js
 
-      - name: Vérifier les surfaces privées Live
+      - name: Vérifier le mode Live compatible
         run: |
           SERVICE=app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
-          SURFACE=app/src/main/java/com/chasmet/grokteleprompter/PrivateOverlaySurface.java
-          test -f "$SURFACE"
-          grep -q 'setSecure(true)' "$SURFACE"
-          grep -q 'setZOrderOnTop(true)' "$SURFACE"
-          grep -q 'telePrivateSurface = new PrivateOverlaySurface' "$SERVICE"
-          grep -q 'controlsPrivateSurface = new PrivateOverlaySurface' "$SERVICE"
-          grep -q 'teleText.setAlpha(0f)' "$SERVICE"
-          grep -q 'content.setAlpha(0f)' "$SERVICE"
+          grep -q 'CAPTURE_UI_SETTLE_DELAY_MS = 250L' "$SERVICE"
+          grep -q 'CONTROLS_READY_HEIGHT_DP = 116' "$SERVICE"
+          grep -q 'controlsRoot.setAlpha(operatorUiVisible ? 1f : 0f)' "$SERVICE"
+          grep -q 'startRecordingAfterUiSettled' "$SERVICE"
+          grep -q 'resumeRecordingAfterUiSettled' "$SERVICE"
+          ! grep -q 'PrivateOverlaySurface' "$SERVICE"
+          ! grep -q 'setSecure(true)' "$SERVICE"
           ! grep -q 'FLAG_SECURE' "$SERVICE"
 
       - name: Installer les tests de l’interface
@@ -71,18 +70,18 @@ jobs:
 
       - name: Vérifier et signer l'artefact de test
         run: |
-          APK=Grok-Teleprompter-v2.16.4-Secure-Smooth.apk
+          APK=Grok-Teleprompter-v2.16.5-Stable-Clean.apk
           cp app/build/outputs/apk/debug/app-debug.apk "$APK"
           test "$(stat -c%s "$APK")" -gt 1000000
-          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='2.16.4'"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | grep -q "versionName='2.16.5'"
           sha256sum "$APK" > "$APK.sha256"
 
       - name: Publier l'APK téléchargeable
         uses: actions/upload-artifact@v4
         with:
-          name: Grok-Teleprompter-v2.16.4-Secure-Smooth
+          name: Grok-Teleprompter-v2.16.5-Stable-Clean
           path: |
-            Grok-Teleprompter-v2.16.4-Secure-Smooth.apk
-            Grok-Teleprompter-v2.16.4-Secure-Smooth.apk.sha256
+            Grok-Teleprompter-v2.16.5-Stable-Clean.apk
+            Grok-Teleprompter-v2.16.5-Stable-Clean.apk.sha256
           if-no-files-found: error
           retention-days: 30

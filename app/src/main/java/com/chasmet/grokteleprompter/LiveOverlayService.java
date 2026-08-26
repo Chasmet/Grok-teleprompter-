@@ -19,9 +19,7 @@ import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
-import android.graphics.RectF;
 import android.graphics.drawable.GradientDrawable;
-import android.graphics.text.LineBreaker;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
@@ -40,9 +38,6 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
 import android.provider.MediaStore;
-import android.text.Layout;
-import android.text.StaticLayout;
-import android.text.TextPaint;
 import android.util.DisplayMetrics;
 import android.util.Range;
 import android.view.Gravity;
@@ -69,15 +64,15 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 import java.util.Locale;
 
 public final class LiveOverlayService extends Service {
     public static final String ACTION_START = "com.chasmet.grokteleprompter.LIVE_START";
     public static final String ACTION_STOP = "com.chasmet.grokteleprompter.LIVE_STOP";
+    public static final String ACTION_TOGGLE_PAUSE = "com.chasmet.grokteleprompter.LIVE_TOGGLE_PAUSE";
+    public static final String ACTION_STOP_RECORDING = "com.chasmet.grokteleprompter.LIVE_STOP_RECORDING";
     public static final String EXTRA_RESULT_CODE = "resultCode";
     public static final String EXTRA_RESULT_DATA = "resultData";
     public static final String EXTRA_SCRIPT = "script";
@@ -89,6 +84,9 @@ public final class LiveOverlayService extends Service {
     private static final int SEGMENTATION_WIDTH = 288;
     private static final int SEGMENTATION_HEIGHT = 384;
     private static final long SEGMENTATION_FRAME_INTERVAL_MS = 42L;
+    private static final long CAPTURE_UI_SETTLE_DELAY_MS = 250L;
+    private static final int CONTROLS_READY_HEIGHT_DP = 116;
+    private static final int CONTROLS_ACTIVE_HEIGHT_DP = 78;
 
     private WindowManager windowManager;
     private WindowManager.LayoutParams cameraParams;
@@ -96,9 +94,7 @@ public final class LiveOverlayService extends Service {
     private WindowManager.LayoutParams controlsParams;
     private FrameLayout cameraRoot;
     private FrameLayout teleRoot;
-    private FrameLayout controlsRoot;
-    private PrivateOverlaySurface telePrivateSurface;
-    private PrivateOverlaySurface controlsPrivateSurface;
+    private LinearLayout controlsRoot;
     private TextureView cameraTexture;
     private ImageView cameraCutout;
     private TextView teleText;
@@ -111,13 +107,6 @@ public final class LiveOverlayService extends Service {
     private Button recButton;
     private Button pauseButton;
     private Button stopButton;
-    private final List<Button> controlButtons = new ArrayList<>();
-
-    private final Paint privatePaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-    private final TextPaint telePaint = new TextPaint(Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
-    private StaticLayout teleLayout;
-    private int teleLayoutWidth = -1;
-    private int teleLayoutFontSize = -1;
 
     private final Handler mainHandler = new Handler(android.os.Looper.getMainLooper());
     private HandlerThread cameraThread;
@@ -152,6 +141,8 @@ public final class LiveOverlayService extends Service {
     private Uri outputUri;
     private boolean recording;
     private boolean paused;
+    private boolean recordingStarting;
+    private boolean resumePending;
     private boolean teleGestureActive;
     private final LiveRecordingClock recordingClock = new LiveRecordingClock();
 
@@ -250,6 +241,14 @@ public final class LiveOverlayService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        if (ACTION_TOGGLE_PAUSE.equals(intent.getAction())) {
+            togglePause();
+            return START_STICKY;
+        }
+        if (ACTION_STOP_RECORDING.equals(intent.getAction())) {
+            stopRecordingInternal(true);
+            return START_STICKY;
+        }
         if (!ACTION_START.equals(intent.getAction())) return START_NOT_STICKY;
 
         startLiveForeground();
@@ -305,8 +304,6 @@ public final class LiveOverlayService extends Service {
             try { mediaProjection.stop(); } catch (Exception ignored) {}
             mediaProjection = null;
         }
-        if (telePrivateSurface != null) telePrivateSurface.releaseRenderer();
-        if (controlsPrivateSurface != null) controlsPrivateSurface.releaseRenderer();
         removeOverlay(cameraRoot);
         removeOverlay(teleRoot);
         removeOverlay(controlsRoot);
@@ -336,20 +333,7 @@ public final class LiveOverlayService extends Service {
     }
 
     private void startLiveForeground() {
-        Intent openIntent = new Intent(this, MainActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(
-                this,
-                0,
-                openIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-        Notification notification = new Notification.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_launcher)
-                .setContentTitle("Grok Téléprompteur · Live")
-                .setContentText("Caméra et téléprompteur flottants actifs")
-                .setOngoing(true)
-                .setContentIntent(pendingIntent)
-                .build();
+        Notification notification = buildLiveNotification();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             int types = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION;
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -360,6 +344,72 @@ public final class LiveOverlayService extends Service {
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
+    }
+
+    private Notification buildLiveNotification() {
+        Intent openIntent = new Intent(this, MainActivity.class);
+        PendingIntent openPendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                openIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_launcher)
+                .setContentTitle("Grok Téléprompteur · Live")
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setContentIntent(openPendingIntent);
+
+        if (recording) {
+            long nowElapsed = android.os.SystemClock.elapsedRealtime();
+            long elapsedMs = recordingClock.elapsedMs(nowElapsed);
+            builder.setContentText(paused
+                    ? "Pause " + recordingClock.format(nowElapsed) + " · interface visible"
+                    : "REC propre · Pause et Stop disponibles")
+                    .setWhen(System.currentTimeMillis() - elapsedMs)
+                    .setUsesChronometer(!paused);
+
+            Intent pauseIntent = new Intent(this, LiveOverlayService.class)
+                    .setAction(ACTION_TOGGLE_PAUSE);
+            PendingIntent pausePendingIntent = PendingIntent.getService(
+                    this,
+                    1,
+                    pauseIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(paused ? android.R.drawable.ic_media_play : android.R.drawable.ic_media_pause,
+                    paused ? "Reprendre" : "Pause", pausePendingIntent);
+
+            Intent stopRecordingIntent = new Intent(this, LiveOverlayService.class)
+                    .setAction(ACTION_STOP_RECORDING);
+            PendingIntent stopRecordingPendingIntent = PendingIntent.getService(
+                    this,
+                    2,
+                    stopRecordingIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                    "Stop", stopRecordingPendingIntent);
+        } else {
+            builder.setContentText("Caméra et téléprompteur flottants prêts");
+
+            Intent closeIntent = new Intent(this, LiveOverlayService.class).setAction(ACTION_STOP);
+            PendingIntent closePendingIntent = PendingIntent.getService(
+                    this,
+                    3,
+                    closeIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                    "Fermer", closePendingIntent);
+        }
+        return builder.build();
+    }
+
+    private void refreshLiveNotification() {
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        if (manager != null) manager.notify(NOTIFICATION_ID, buildLiveNotification());
     }
 
     private void createOverlays() {
@@ -382,8 +432,8 @@ public final class LiveOverlayService extends Service {
         teleRoot = buildTeleWindow();
         windowManager.addView(teleRoot, teleParams);
 
-        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
-        controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
+        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(220));
+        controlsParams = baseParams(Math.max(dp(196), controlsWidth), dp(CONTROLS_READY_HEIGHT_DP));
         controlsParams.gravity = Gravity.TOP | Gravity.START;
         controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
         controlsParams.y = dp(22);
@@ -450,13 +500,7 @@ public final class LiveOverlayService extends Service {
     private FrameLayout buildTeleWindow() {
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(true);
-        root.setBackground(null);
-
-        telePrivateSurface = new PrivateOverlaySurface(this, this::drawPrivateTeleprompter);
-        root.addView(telePrivateSurface, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        ));
+        root.setBackground(roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
 
         teleText = new TextView(this);
         teleText.setText(script);
@@ -467,7 +511,6 @@ public final class LiveOverlayService extends Service {
         teleText.setPadding(dp(14), dp(56), dp(14), dp(80));
         teleText.setShadowLayer(dp(4), 0, dp(2), Color.BLACK);
         teleText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        teleText.setAlpha(0f);
         FrameLayout.LayoutParams textLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -477,7 +520,6 @@ public final class LiveOverlayService extends Service {
         attachManualTeleScroll(teleText);
 
         teleMoveHandle = handle("✥ TÉLÉPROMPTEUR · GLISSE");
-        teleMoveHandle.setAlpha(0f);
         FrameLayout.LayoutParams moveLp = new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, dp(34), Gravity.TOP);
         moveLp.leftMargin = dp(4);
@@ -488,44 +530,24 @@ public final class LiveOverlayService extends Service {
 
         teleResizeHandle = handle("↘");
         teleResizeHandle.setTextSize(16);
-        teleResizeHandle.setAlpha(0f);
         FrameLayout.LayoutParams resizeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.BOTTOM | Gravity.END);
         root.addView(teleResizeHandle, resizeLp);
         attachResizeHandle(teleResizeHandle, root, teleParams, dp(150), dp(110));
-        root.addOnLayoutChangeListener((view, left, top, right, bottom,
-                                        oldLeft, oldTop, oldRight, oldBottom) -> {
-            if (right - left != oldRight - oldLeft) invalidateTeleLayout();
-            requestPrivateTeleRender();
-        });
         return root;
     }
 
-    private FrameLayout buildControlsWindow() {
-        FrameLayout root = new FrameLayout(this);
-        root.setBackground(null);
-
-        controlsPrivateSurface = new PrivateOverlaySurface(this, this::drawPrivateControls);
-        root.addView(controlsPrivateSurface, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        ));
-
-        LinearLayout content = new LinearLayout(this);
-        content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(7), dp(7), dp(7), dp(7));
-        content.setAlpha(0f);
-        root.addView(content, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP
-        ));
+    private LinearLayout buildControlsWindow() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(dp(7), dp(7), dp(7), dp(7));
+        root.setBackground(roundedDrawable(0xEE07111F, 0xAA34D399, dp(18), dp(1)));
 
         statusText = new TextView(this);
         statusText.setTextColor(Color.WHITE);
-        statusText.setTextSize(12);
+        statusText.setTextSize(10);
         statusText.setGravity(Gravity.CENTER);
         statusText.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        content.addView(statusText, new LinearLayout.LayoutParams(
+        root.addView(statusText, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 dp(24)
         ));
@@ -539,7 +561,7 @@ public final class LiveOverlayService extends Service {
         row1.addView(pauseButton, weight());
         row1.addView(stopButton, weight());
         row1.addView(closeButton, weight());
-        content.addView(row1);
+        root.addView(row1);
 
         tuningRow = row();
         Button flip = button("⇄ Cam");
@@ -552,7 +574,7 @@ public final class LiveOverlayService extends Service {
         for (Button b : Arrays.asList(flip, camMinus, camPlus, textMinus, textPlus, speedMinus, speedPlus)) {
             tuningRow.addView(b, weight());
         }
-        content.addView(tuningRow);
+        root.addView(tuningRow);
 
         recButton.setOnClickListener(v -> startRecording());
         pauseButton.setOnClickListener(v -> togglePause());
@@ -565,142 +587,7 @@ public final class LiveOverlayService extends Service {
         textPlus.setOnClickListener(v -> changeFont(2));
         speedMinus.setOnClickListener(v -> changeSpeed(-1));
         speedPlus.setOnClickListener(v -> changeSpeed(1));
-        root.addOnLayoutChangeListener((view, left, top, right, bottom,
-                                        oldLeft, oldTop, oldRight, oldBottom) -> requestPrivateControlsRender());
         return root;
-    }
-
-    private void drawPrivateTeleprompter(Canvas canvas, int width, int height) {
-        RectF panel = new RectF(0f, 0f, width, height);
-        if (recording) {
-            drawRoundedPanel(canvas, panel, dp(18), 0x33000000, Color.TRANSPARENT, 0f);
-        } else {
-            drawRoundedPanel(canvas, panel, dp(18), 0x44000000, 0xAA60A5FA, dp(2));
-        }
-
-        int contentWidth = Math.max(1, width - dp(28));
-        StaticLayout layout = ensureTeleLayout(contentWidth);
-        if (layout != null) {
-            canvas.save();
-            canvas.clipRect(0, 0, width, height);
-            canvas.translate(dp(14), dp(126) - teleOffset);
-            layout.draw(canvas);
-            canvas.restore();
-        }
-
-        if (!recording) {
-            RectF move = new RectF(dp(4), dp(3), width - dp(4), dp(37));
-            drawRoundedPanel(canvas, move, dp(12), 0xEE1D4ED8, 0xAAFFFFFF, dp(1));
-            drawCenteredText(canvas, "✥ TÉLÉPROMPTEUR · GLISSE", move,
-                    sp(9), Color.WHITE, true);
-
-            RectF resize = new RectF(width - dp(52), height - dp(52), width, height);
-            drawRoundedPanel(canvas, resize, dp(12), 0xEE1D4ED8, 0xAAFFFFFF, dp(1));
-            drawCenteredText(canvas, "↘", resize, sp(16), Color.WHITE, true);
-        }
-    }
-
-    private void drawPrivateControls(Canvas canvas, int width, int height) {
-        drawRoundedPanel(canvas, new RectF(0f, 0f, width, height), dp(18),
-                0xEE07111F, 0xAA34D399, dp(1));
-
-        Rect statusBounds = descendantBounds(statusText);
-        if (statusBounds != null) {
-            drawCenteredText(canvas, String.valueOf(statusText.getText()),
-                    new RectF(statusBounds), sp(12), Color.WHITE, true);
-        }
-
-        for (Button button : controlButtons) {
-            if (!button.isShown()) continue;
-            Rect bounds = descendantBounds(button);
-            if (bounds == null || bounds.width() <= 0 || bounds.height() <= 0) continue;
-            RectF rect = new RectF(bounds);
-            int fill = button.isEnabled() ? 0xFF172554 : 0x99172554;
-            int stroke = button.isEnabled() ? 0x775D7CFA : 0x335D7CFA;
-            int textColor = button.isEnabled() ? Color.WHITE : 0x99FFFFFF;
-            drawRoundedPanel(canvas, rect, dp(10), fill, stroke, dp(1));
-            drawCenteredText(canvas, String.valueOf(button.getText()), rect,
-                    sp(8), textColor, false);
-        }
-    }
-
-    private Rect descendantBounds(android.view.View descendant) {
-        if (controlsRoot == null || descendant == null || !descendant.isShown()) return null;
-        Rect rect = new Rect(0, 0, descendant.getWidth(), descendant.getHeight());
-        try {
-            controlsRoot.offsetDescendantRectToMyCoords(descendant, rect);
-            return rect;
-        } catch (IllegalArgumentException ignored) {
-            return null;
-        }
-    }
-
-    private void drawRoundedPanel(Canvas canvas, RectF rect, float radius,
-                                  int fillColor, int strokeColor, float strokeWidth) {
-        privatePaint.setStyle(Paint.Style.FILL);
-        privatePaint.setColor(fillColor);
-        privatePaint.clearShadowLayer();
-        canvas.drawRoundRect(rect, radius, radius, privatePaint);
-        if (strokeWidth > 0f && Color.alpha(strokeColor) > 0) {
-            privatePaint.setStyle(Paint.Style.STROKE);
-            privatePaint.setStrokeWidth(strokeWidth);
-            privatePaint.setColor(strokeColor);
-            float inset = strokeWidth * .5f;
-            RectF inner = new RectF(rect.left + inset, rect.top + inset,
-                    rect.right - inset, rect.bottom - inset);
-            canvas.drawRoundRect(inner, Math.max(0f, radius - inset),
-                    Math.max(0f, radius - inset), privatePaint);
-        }
-    }
-
-    private void drawCenteredText(Canvas canvas, String value, RectF bounds,
-                                  float textSizePx, int color, boolean bold) {
-        privatePaint.setStyle(Paint.Style.FILL);
-        privatePaint.setColor(color);
-        privatePaint.setTextSize(textSizePx);
-        privatePaint.setTextAlign(Paint.Align.CENTER);
-        privatePaint.setTypeface(bold
-                ? android.graphics.Typeface.DEFAULT_BOLD
-                : android.graphics.Typeface.DEFAULT);
-        privatePaint.setShadowLayer(dp(2), 0f, dp(1), 0xCC000000);
-        Paint.FontMetrics metrics = privatePaint.getFontMetrics();
-        float baseline = bounds.centerY() - (metrics.ascent + metrics.descent) * .5f;
-        canvas.drawText(value, bounds.centerX(), baseline, privatePaint);
-        privatePaint.clearShadowLayer();
-    }
-
-    private StaticLayout ensureTeleLayout(int width) {
-        width = Math.max(1, width);
-        if (teleLayout != null && teleLayoutWidth == width
-                && teleLayoutFontSize == fontSizeSp) return teleLayout;
-        telePaint.setColor(Color.WHITE);
-        telePaint.setTextSize(sp(fontSizeSp));
-        telePaint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
-        telePaint.setShadowLayer(dp(4), 0f, dp(2), Color.BLACK);
-        teleLayout = StaticLayout.Builder.obtain(script, 0, script.length(), telePaint, width)
-                .setAlignment(Layout.Alignment.ALIGN_CENTER)
-                .setIncludePad(true)
-                .setLineSpacing(dp(2), 1.02f)
-                .setBreakStrategy(LineBreaker.BREAK_STRATEGY_BALANCED)
-                .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
-                .build();
-        teleLayoutWidth = width;
-        teleLayoutFontSize = fontSizeSp;
-        return teleLayout;
-    }
-
-    private void invalidateTeleLayout() {
-        teleLayout = null;
-        teleLayoutWidth = -1;
-        teleLayoutFontSize = -1;
-    }
-
-    private void requestPrivateTeleRender() {
-        if (telePrivateSurface != null) telePrivateSurface.requestRender();
-    }
-
-    private void requestPrivateControlsRender() {
-        if (controlsPrivateSurface != null) controlsPrivateSurface.requestRender();
     }
 
     private LinearLayout row() {
@@ -725,7 +612,6 @@ public final class LiveOverlayService extends Service {
         button.setAllCaps(false);
         button.setPadding(dp(3), 0, dp(3), 0);
         button.setBackground(roundedDrawable(0xFF172554, 0x775D7CFA, dp(10), dp(1)));
-        controlButtons.add(button);
         return button;
     }
 
@@ -980,18 +866,14 @@ public final class LiveOverlayService extends Service {
 
     private void applyTeleOffset() {
         if (teleText == null || teleRoot == null) return;
-        StaticLayout layout = ensureTeleLayout(Math.max(1, teleParams.width - dp(28)));
-        float contentHeight = (layout == null ? teleText.getHeight() : layout.getHeight()) + dp(136);
-        float max = Math.max(0f, contentHeight - teleParams.height * .42f);
+        float max = Math.max(0f, teleText.getHeight() - teleParams.height * .42f);
         teleOffset = Math.min(teleOffset, max);
         teleText.setTranslationY(dp(70) - teleOffset);
-        requestPrivateTeleRender();
     }
 
     private void changeFont(int delta) {
         fontSizeSp = clamp(fontSizeSp + delta, 20, 70);
         teleText.setTextSize(fontSizeSp);
-        invalidateTeleLayout();
         teleText.post(this::applyTeleOffset);
     }
 
@@ -1006,32 +888,55 @@ public final class LiveOverlayService extends Service {
     }
 
     private void updateRecordingChrome() {
-        float chromeAlpha = recording ? 0f : 1f;
+        boolean operatorUiVisible = operatorUiVisible();
+        float chromeAlpha = operatorUiVisible ? 1f : 0f;
         if (cameraMoveHandle != null) cameraMoveHandle.setAlpha(chromeAlpha);
         if (cameraResizeHandle != null) cameraResizeHandle.setAlpha(chromeAlpha);
-        // Les poignées du téléprompteur sont dessinées uniquement sur la surface privée.
-        if (teleMoveHandle != null) teleMoveHandle.setAlpha(0f);
-        if (teleResizeHandle != null) teleResizeHandle.setAlpha(0f);
+        if (teleMoveHandle != null) teleMoveHandle.setAlpha(chromeAlpha);
+        if (teleResizeHandle != null) teleResizeHandle.setAlpha(chromeAlpha);
 
         if (cameraRoot != null) {
-            cameraRoot.setBackground(recording
-                    ? null
-                    : roundedDrawable(0x18000000, 0xCCFFFFFF, dp(15), dp(2)));
+            cameraRoot.setBackground(operatorUiVisible
+                    ? roundedDrawable(0x18000000, 0xCCFFFFFF, dp(15), dp(2))
+                    : null);
         }
         if (teleRoot != null) {
-            teleRoot.setBackground(null);
+            teleRoot.setVisibility(operatorUiVisible
+                    ? android.view.View.VISIBLE
+                    : android.view.View.INVISIBLE);
+            teleRoot.setBackground(operatorUiVisible
+                    ? roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2))
+                    : null);
         }
         if (tuningRow != null) {
-            tuningRow.setVisibility(recording ? android.view.View.GONE : android.view.View.VISIBLE);
+            tuningRow.setVisibility(!recording && !recordingStarting
+                    ? android.view.View.VISIBLE
+                    : android.view.View.GONE);
         }
-        if (controlsRoot != null) controlsRoot.requestLayout();
-        requestPrivateTeleRender();
-        if (controlsRoot != null) controlsRoot.post(this::requestPrivateControlsRender);
+        if (controlsRoot != null) {
+            // Alpha nul conserve deux zones tactiles compactes aux mêmes emplacements
+            // (Pause et Stop) sans écrire le moindre pixel dans MediaProjection.
+            controlsRoot.setAlpha(operatorUiVisible ? 1f : 0f);
+        }
+        if (controlsParams != null && controlsRoot != null) {
+            int targetHeight = dp(!recording && !recordingStarting
+                    ? CONTROLS_READY_HEIGHT_DP
+                    : CONTROLS_ACTIVE_HEIGHT_DP);
+            if (controlsParams.height != targetHeight) {
+                controlsParams.height = targetHeight;
+                try { windowManager.updateViewLayout(controlsRoot, controlsParams); }
+                catch (Exception ignored) {}
+            }
+        }
+    }
+
+    private boolean operatorUiVisible() {
+        return !recordingStarting && !resumePending && (!recording || paused);
     }
 
     private void updateInteractivity() {
         setTouchable(cameraRoot, cameraParams, true);
-        setTouchable(teleRoot, teleParams, true);
+        setTouchable(teleRoot, teleParams, operatorUiVisible());
         setTouchable(controlsRoot, controlsParams, true);
     }
 
@@ -1348,11 +1253,21 @@ public final class LiveOverlayService extends Service {
     }
 
     private void startRecording() {
-        if (recording || mediaProjection == null) return;
+        if (recording || recordingStarting || mediaProjection == null) return;
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             toast("Autorise le microphone dans l’application");
             return;
         }
+        recordingStarting = true;
+        updateInteractivity();
+        updateControls();
+        // Laisser SurfaceFlinger composer au moins plusieurs trames sans interface
+        // avant de connecter l'encodeur. Cela évite tout flash de commandes au début.
+        mainHandler.postDelayed(this::startRecordingAfterUiSettled, CAPTURE_UI_SETTLE_DELAY_MS);
+    }
+
+    private void startRecordingAfterUiSettled() {
+        if (!recordingStarting || serviceDestroyed || mediaProjection == null) return;
         try {
             prepareOutput();
             DisplayMetrics metrics = new DisplayMetrics();
@@ -1397,6 +1312,7 @@ public final class LiveOverlayService extends Service {
                 virtualDisplay.setSurface(recorderSurface);
             }
             mediaRecorder.start();
+            recordingStarting = false;
             recording = true;
             paused = false;
             recordingClock.start(android.os.SystemClock.elapsedRealtime());
@@ -1411,15 +1327,16 @@ public final class LiveOverlayService extends Service {
             mainHandler.post(recordingTimerLoop);
             updateInteractivity();
             updateControls();
-            toast("Enregistrement Live lancé");
+            refreshLiveNotification();
         } catch (Exception error) {
+            recordingStarting = false;
             cleanupRecorderFailure();
             toast("Impossible de lancer l’enregistrement Live");
         }
     }
 
     private void togglePause() {
-        if (!recording || mediaRecorder == null) return;
+        if (!recording || mediaRecorder == null || resumePending) return;
         try {
             if (!paused) {
                 mediaRecorder.pause();
@@ -1428,26 +1345,53 @@ public final class LiveOverlayService extends Service {
                 segmentationFrozen = true;
                 mainHandler.removeCallbacks(teleScrollLoop);
                 scheduleNextSegmentation(120L);
+                updateInteractivity();
+                updateControls();
+                refreshLiveNotification();
             } else {
-                mediaRecorder.resume();
-                paused = false;
-                recordingClock.resume(android.os.SystemClock.elapsedRealtime());
-                segmentationFrozen = false;
-                teleLastFrame = 0L;
-                mainHandler.post(teleScrollLoop);
-                scheduleNextSegmentation(0L);
+                resumePending = true;
+                updateInteractivity();
+                updateControls();
+                // Masquer d'abord téléprompteur et commandes, puis reprendre l'encodeur.
+                mainHandler.postDelayed(this::resumeRecordingAfterUiSettled,
+                        CAPTURE_UI_SETTLE_DELAY_MS);
             }
+        } catch (Exception error) {
+            resumePending = false;
             updateInteractivity();
             updateControls();
-        } catch (Exception error) {
             toast("Pause Live indisponible sur ce téléphone");
         }
     }
 
+    private void resumeRecordingAfterUiSettled() {
+        if (!resumePending || !recording || !paused || mediaRecorder == null || serviceDestroyed) return;
+        try {
+            mediaRecorder.resume();
+            resumePending = false;
+            paused = false;
+            recordingClock.resume(android.os.SystemClock.elapsedRealtime());
+            segmentationFrozen = false;
+            teleLastFrame = 0L;
+            mainHandler.post(teleScrollLoop);
+            scheduleNextSegmentation(0L);
+            updateInteractivity();
+            updateControls();
+            refreshLiveNotification();
+        } catch (Exception error) {
+            resumePending = false;
+            updateInteractivity();
+            updateControls();
+            toast("Reprise Live indisponible sur ce téléphone");
+        }
+    }
+
     private void stopRecordingInternal(boolean notify) {
-        if (!recording && mediaRecorder == null) return;
+        if (!recording && !recordingStarting && mediaRecorder == null) return;
         mainHandler.removeCallbacks(teleScrollLoop);
         mainHandler.removeCallbacks(recordingTimerLoop);
+        recordingStarting = false;
+        resumePending = false;
         recording = false;
         paused = false;
         recordingClock.reset();
@@ -1468,6 +1412,7 @@ public final class LiveOverlayService extends Service {
         finishOutput(success);
         updateInteractivity();
         updateControls();
+        refreshLiveNotification();
         if (notify && success) toast("Vidéo Live enregistrée dans Films/Grok Téléprompteur Live");
     }
 
@@ -1505,6 +1450,8 @@ public final class LiveOverlayService extends Service {
 
     private void cleanupRecorderFailure() {
         mainHandler.removeCallbacks(recordingTimerLoop);
+        recordingStarting = false;
+        resumePending = false;
         recording = false;
         paused = false;
         recordingClock.reset();
@@ -1516,6 +1463,7 @@ public final class LiveOverlayService extends Service {
         finishOutput(false);
         updateInteractivity();
         updateControls();
+        refreshLiveNotification();
     }
 
     private void preferBuiltInMicrophone(MediaRecorder recorder) {
@@ -1533,19 +1481,21 @@ public final class LiveOverlayService extends Service {
 
     private void updateControls() {
         if (recButton == null) return;
-        recButton.setEnabled(!recording);
-        pauseButton.setEnabled(recording);
+        recButton.setEnabled(!recording && !recordingStarting);
+        pauseButton.setEnabled(recording && !resumePending);
         stopButton.setEnabled(recording);
-        pauseButton.setText(paused ? "▶ Reprendre" : "Ⅱ Pause");
-        updateRecordingChrome();
-        if (!recording) {
-            statusText.setText("✥ LIVE prêt · déplace tout · V" + speed);
+        pauseButton.setText(resumePending ? "… Reprise" : (paused ? "▶ Repr." : "Ⅱ Pause"));
+        if (recordingStarting) {
+            statusText.setText("Préparation de la capture propre…");
+        } else if (!recording) {
+            statusText.setText("✥ PRÊT · REC propre · V" + speed);
         } else {
             String elapsed = recordingClock.format(android.os.SystemClock.elapsedRealtime());
-            if (paused) statusText.setText("Ⅱ PAUSE " + elapsed + " · gestes actifs");
-            else statusText.setText("● REC " + elapsed + " · gestes actifs");
+            if (resumePending) statusText.setText("Reprise propre…");
+            else if (paused) statusText.setText("Ⅱ PAUSE " + elapsed + " · interface visible");
+            else statusText.setText("● REC " + elapsed + " · interface masquée");
         }
-        if (controlsRoot != null) controlsRoot.post(this::requestPrivateControlsRender);
+        updateRecordingChrome();
     }
 
     private void removeOverlay(android.view.View view) {
@@ -1555,10 +1505,6 @@ public final class LiveOverlayService extends Service {
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
-    }
-
-    private float sp(float value) {
-        return value * getResources().getDisplayMetrics().scaledDensity;
     }
 
     private int even(int value) {

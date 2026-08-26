@@ -5,7 +5,7 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 ## Versions disponibles
 
 - Application web : https://chasmet.github.io/Grok-teleprompter-/
-- APK Android : construit automatiquement par GitHub Actions dans l’artefact `Grok-Teleprompter-v2.16.4-Secure-Smooth`.
+- APK Android : construit automatiquement par GitHub Actions dans l’artefact `Grok-Teleprompter-v2.16.5-Stable-Clean`.
 
 ## Fonctions
 
@@ -15,7 +15,8 @@ Application mobile pour filmer avec un téléprompteur, importer une vidéo ou u
 - Décor vert uni par défaut, ou import d’une image/vidéo utilisée intacte comme arrière-plan ; seul le flux caméra est détouré.
 - Les médias sont séparés entre les deux studios : un décor choisi dans `FOND VERT` ne peut plus apparaître dans `CLASSIQUE`.
 - Téléprompteur complet en mode fond vert, avec silhouette et texte déplaçables/redimensionnables séparément, y compris pendant REC.
-- En Live Android, le téléprompteur, le chrono et les commandes sont dessinés sur des surfaces matérielles privées : visibles sur le téléphone, absents du MP4 final.
+- En Live Android compatible Honor/Huawei, le téléprompteur, le chrono et les commandes sont visibles avant REC et pendant Pause, puis rendus totalement transparents avant chaque démarrage/reprise de l’encodeur afin d’éviter l’écran noir et toute incrustation dans le MP4.
+- Pendant REC, les zones Pause et Stop du panneau compact restent tactiles malgré leur transparence ; Pause réaffiche l’interface sans encoder ces images.
 - La caméra détourée reste volontairement sur une surface enregistrable ; ses gestes et déplacements continuent pendant REC et Pause.
 - Mode caméra live vertical ; les vidéos et images importées conservent automatiquement leur propre format.
 - Mode vidéo ou image importée.
@@ -76,7 +77,7 @@ L’APK contient l’application web dans ses propres ressources et fonctionne s
 - un seul contexte audio du micro natif jusqu’à l’encodeur AAC, y compris lorsque le son du média est mélangé ;
 - une jauge limitée à 10 mesures par seconde et un rendu vidéo limité à 30 images par seconde pour protéger le thread audio ;
 - un masque de silhouette natif à faible résolution, affiné hors du thread d’interface puis appliqué par le canvas accéléré ;
-- deux surfaces sécurisées dédiées à l’interface opérateur Live, sans appliquer de protection à la caméra détourée enregistrable ;
+- une interface opérateur Live à dimensions strictes, masquée avant la connexion/reprise de l’encodeur sans aucune surface sécurisée susceptible de noircir la capture ;
 - la source Android `CAMCORDER` exclusivement : aucun micro WebView, `MIC`, `UNPROCESSED` ou reconnaissance vocale dans l’APK ;
 - une aide persistante et un accès direct aux autorisations Android en cas d’échec ;
 - l’enregistrement par blocs des grosses vidéos, sans charger tout le fichier en mémoire native ;
@@ -94,7 +95,7 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 4. Android Lint ;
 5. la compilation de l’APK de test ;
 6. la vérification de la version réelle de l’APK et de sa taille ;
-7. la publication de `Grok-Teleprompter-v2.16.4-Secure-Smooth.apk` et de son SHA-256.
+7. la publication de `Grok-Teleprompter-v2.16.5-Stable-Clean.apk` et de son SHA-256.
 
 ## Structure utile
 
@@ -103,7 +104,6 @@ Le workflow `.github/workflows/build-apk.yml` lance automatiquement :
 - `script.js` : caméra, audio, téléprompteur, composition et export.
 - `manifest.json` et `sw.js` : installation PWA et cache hors ligne.
 - `app/` : enveloppe Android native.
-- `app/src/main/java/com/chasmet/grokteleprompter/PrivateOverlaySurface.java` : rendu privé des commandes et du téléprompteur Live.
 - `.github/workflows/build-apk.yml` : construction automatique de l’APK.
 - `AUDIT.md` : défauts relevés, corrections et matrice de validation.
 - `tests/` : audit statique et scénarios fonctionnels mobiles.
