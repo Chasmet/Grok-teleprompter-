@@ -332,6 +332,7 @@ public final class LiveOverlayService extends Service {
 
         int teleWidth = Math.min(metrics.widthPixels - dp(28), dp(238));
         teleParams = baseParams(Math.max(dp(170), teleWidth), dp(165));
+        excludeFromRecording(teleParams);
         teleParams.gravity = Gravity.TOP | Gravity.START;
         teleParams.x = Math.max(dp(8), (metrics.widthPixels - teleParams.width) / 2);
         teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
@@ -340,6 +341,7 @@ public final class LiveOverlayService extends Service {
 
         int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
         controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
+        excludeFromRecording(controlsParams);
         controlsParams.gravity = Gravity.TOP | Gravity.START;
         controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
         controlsParams.y = dp(22);
@@ -349,6 +351,11 @@ public final class LiveOverlayService extends Service {
 
         updateInteractivity();
         updateControls();
+    }
+
+    private void excludeFromRecording(WindowManager.LayoutParams params) {
+        // Keep this overlay visible on the phone while excluding it from screenshots/MediaProjection.
+        params.flags |= WindowManager.LayoutParams.FLAG_SECURE;
     }
 
     private WindowManager.LayoutParams baseParams(int width, int height) {
