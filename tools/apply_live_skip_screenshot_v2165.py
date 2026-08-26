@@ -45,11 +45,6 @@ replace(old_chrome, new_chrome)
 # Do not render into the old secure surface anymore.
 source = source.replace('        if (recording) renderSecureTeleprompter();\n', '')
 
-# Re-apply after any resize/relayout in case the OEM replaces the root SurfaceControl.
-replace(
-'''        windowManager.updateViewLayout(root, params);\n        if (root == teleRoot) applyTeleOffset();\n''',
-'''        windowManager.updateViewLayout(root, params);\n        if (root == teleRoot) {\n            applyTeleOffset();\n            root.post(() -> markWindowSkipScreenshot(root));\n        } else if (root == controlsRoot) {\n            root.post(() -> markWindowSkipScreenshot(root));\n        }\n''', 2)
-
 java_path.write_text(source, encoding='utf-8')
 
 # Gradle: use a maintained pure-Java hidden API bridge so setSkipScreenshot works on targetSdk 36.
