@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - tools/apply_live_child_layers_v2166.py
+      - .github/workflows/apply-live-child-layers-v2166.yml
   workflow_dispatch:
 
 permissions:
@@ -38,8 +39,7 @@ jobs:
           fi
 
       - name: Compile Java immediately
-        run: |
-          gradle :app:compileDebugJavaWithJavac --stacktrace
+        run: gradle :app:compileDebugJavaWithJavac --stacktrace
 
       - name: Commit v2.16.6
         run: |
