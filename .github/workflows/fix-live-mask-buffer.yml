@@ -1,0 +1,36 @@
+name: Fix live mask buffer
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-live-mask-buffer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix ML Kit buffer type
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('import java.nio.FloatBuffer;\n', 'import java.nio.ByteBuffer;\nimport java.nio.ByteOrder;\nimport java.nio.FloatBuffer;\n')
+          s = s.replace('            FloatBuffer buffer = mask.getBuffer();\n            buffer.rewind();\n', '            ByteBuffer bytes = mask.getBuffer();\n            bytes.rewind();\n            FloatBuffer buffer = bytes.order(ByteOrder.nativeOrder()).asFloatBuffer();\n')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit source fix
+        run: |
+          if git diff --quiet; then exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          git commit -m "fix: read live segmentation mask as ByteBuffer"
+          git pull --rebase origin main
+          git push origin HEAD:main
