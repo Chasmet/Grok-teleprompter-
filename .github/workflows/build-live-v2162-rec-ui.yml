@@ -1,0 +1,78 @@
+name: Construire APK Live v2.16.2 REC UI
+
+on:
+  push:
+    paths:
+      - '.github/workflows/build-live-v2162-rec-ui.yml'
+      - 'app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java'
+      - 'app/src/main/java/com/chasmet/grokteleprompter/LiveRecordingClock.java'
+      - 'app/src/test/java/com/chasmet/grokteleprompter/LiveRecordingClockTest.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Tester REC propre, chrono et construire APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Récupérer le projet
+        uses: actions/checkout@v4
+
+      - name: Installer Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Installer Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Vérifier le mode REC
+        run: |
+          node --check script.js
+          node --check live-mode.js
+          grep -q 'recordingTimerLoop' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'updateRecordingChrome' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'cameraMoveHandle.setAlpha(chromeAlpha)' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'teleMoveHandle.setAlpha(chromeAlpha)' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'tuningRow.setVisibility(recording ? android.view.View.GONE' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q '● REC " + elapsed' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'recordingClock.pause' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+          grep -q 'recordingClock.resume' app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java
+
+      - name: Installer dépendances audit
+        run: npm ci
+
+      - name: Audit statique
+        run: npm test
+
+      - name: Installer Android SDK 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Tester gestes et chronomètre
+        run: |
+          gradle :app:testDebugUnitTest \
+            --tests 'com.chasmet.grokteleprompter.LiveOverlayGeometryTest' \
+            --tests 'com.chasmet.grokteleprompter.LiveRecordingClockTest' \
+            --stacktrace
+
+      - name: Lint et compiler APK
+        run: gradle :app:lintDebug :app:assembleDebug --stacktrace
+
+      - name: Préparer APK v2.16.2
+        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.16.2-REC-Timer.apk
+
+      - name: Publier APK testé
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grok-Teleprompter-v2.16.2-REC-Timer
+          path: Grok-Teleprompter-v2.16.2-REC-Timer.apk
+          if-no-files-found: error
+          retention-days: 30
