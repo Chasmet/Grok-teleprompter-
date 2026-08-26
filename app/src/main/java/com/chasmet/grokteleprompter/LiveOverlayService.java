@@ -43,6 +43,8 @@ import android.util.DisplayMetrics;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.TextureView;
 import android.view.WindowManager;
 import android.widget.Button;
@@ -90,6 +92,10 @@ public final class LiveOverlayService extends Service {
     private TextureView cameraTexture;
     private ImageView cameraCutout;
     private TextView teleText;
+    private SurfaceView teleSecureSurface;
+    private android.text.StaticLayout teleSecureLayout;
+    private int teleSecureLayoutWidth = -1;
+    private int teleSecureLayoutFontSize = -1;
     private TextView statusText;
     private TextView cameraMoveHandle;
     private TextView cameraResizeHandle;
@@ -332,7 +338,6 @@ public final class LiveOverlayService extends Service {
 
         int teleWidth = Math.min(metrics.widthPixels - dp(28), dp(238));
         teleParams = baseParams(Math.max(dp(170), teleWidth), dp(165));
-        excludeFromRecording(teleParams);
         teleParams.gravity = Gravity.TOP | Gravity.START;
         teleParams.x = Math.max(dp(8), (metrics.widthPixels - teleParams.width) / 2);
         teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
@@ -414,6 +419,26 @@ public final class LiveOverlayService extends Service {
         FrameLayout root = new FrameLayout(this);
         root.setClipChildren(true);
         root.setBackground(roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
+
+        teleSecureSurface = new SurfaceView(this);
+        teleSecureSurface.setSecure(true);
+        teleSecureSurface.setZOrderMediaOverlay(true);
+        teleSecureSurface.getHolder().setFormat(PixelFormat.TRANSLUCENT);
+        teleSecureSurface.setVisibility(android.view.View.GONE);
+        teleSecureSurface.getHolder().addCallback(new SurfaceHolder.Callback() {
+            @Override public void surfaceCreated(@NonNull SurfaceHolder holder) {
+                renderSecureTeleprompter();
+            }
+            @Override public void surfaceChanged(@NonNull SurfaceHolder holder, int format, int width, int height) {
+                teleSecureLayout = null;
+                renderSecureTeleprompter();
+            }
+            @Override public void surfaceDestroyed(@NonNull SurfaceHolder holder) {}
+        });
+        root.addView(teleSecureSurface, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+        ));
 
         teleText = new TextView(this);
         teleText.setText(script);
@@ -578,7 +603,10 @@ public final class LiveOverlayService extends Service {
         params.x = LiveOverlayGeometry.clamp(params.x, 0, Math.max(0, screenWidth() - params.width));
         params.y = LiveOverlayGeometry.clamp(params.y, 0, Math.max(0, screenHeight() - params.height));
         windowManager.updateViewLayout(root, params);
-        if (root == teleRoot) applyTeleOffset();
+        if (root == teleRoot) {
+            teleSecureLayout = null;
+            applyTeleOffset();
+        }
     }
 
     private void scaleOverlay(android.view.View root, WindowManager.LayoutParams params,
@@ -590,7 +618,10 @@ public final class LiveOverlayService extends Service {
         params.x = LiveOverlayGeometry.clamp(params.x, 0, Math.max(0, screenWidth() - params.width));
         params.y = LiveOverlayGeometry.clamp(params.y, 0, Math.max(0, screenHeight() - params.height));
         windowManager.updateViewLayout(root, params);
-        if (root == teleRoot) applyTeleOffset();
+        if (root == teleRoot) {
+            teleSecureLayout = null;
+            applyTeleOffset();
+        }
     }
 
     private void attachCameraDirectGesture(FrameLayout root) {
@@ -777,15 +808,82 @@ public final class LiveOverlayService extends Service {
         });
     }
 
+    private android.text.StaticLayout ensureSecureTeleLayout() {
+        int width = Math.max(1, teleParams.width - dp(28));
+        if (teleSecureLayout != null
+                && teleSecureLayoutWidth == width
+                && teleSecureLayoutFontSize == fontSizeSp) {
+            return teleSecureLayout;
+        }
+        android.text.TextPaint paint = new android.text.TextPaint(
+                Paint.ANTI_ALIAS_FLAG | Paint.SUBPIXEL_TEXT_FLAG);
+        paint.setColor(Color.WHITE);
+        paint.setTextSize(fontSizeSp * getResources().getDisplayMetrics().scaledDensity);
+        paint.setTypeface(android.graphics.Typeface.DEFAULT_BOLD);
+        paint.setShadowLayer(dp(4), 0, dp(2), Color.BLACK);
+        teleSecureLayout = android.text.StaticLayout.Builder
+                .obtain(script, 0, script.length(), paint, width)
+                .setAlignment(android.text.Layout.Alignment.ALIGN_CENTER)
+                .setIncludePad(true)
+                .setLineSpacing(dp(2), 1.0f)
+                .build();
+        teleSecureLayoutWidth = width;
+        teleSecureLayoutFontSize = fontSizeSp;
+        return teleSecureLayout;
+    }
+
+    private void renderSecureTeleprompter() {
+        if (!recording || teleSecureSurface == null || teleParams == null) return;
+        SurfaceHolder holder = teleSecureSurface.getHolder();
+        Surface surface = holder.getSurface();
+        if (surface == null || !surface.isValid()) return;
+        Canvas canvas = null;
+        try {
+            canvas = holder.lockCanvas();
+            if (canvas == null) return;
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+
+            Paint panel = new Paint(Paint.ANTI_ALIAS_FLAG);
+            panel.setColor(0x66000000);
+            float radius = dp(18);
+            canvas.drawRoundRect(0, 0, canvas.getWidth(), canvas.getHeight(), radius, radius, panel);
+
+            android.text.StaticLayout layout = ensureSecureTeleLayout();
+            float max = Math.max(0f, layout.getHeight() - teleParams.height * .42f);
+            teleOffset = Math.max(0f, Math.min(teleOffset, max));
+            float x = dp(14);
+            float y = dp(70) - teleOffset;
+            canvas.save();
+            canvas.clipRect(0, 0, canvas.getWidth(), canvas.getHeight());
+            canvas.translate(x, y);
+            layout.draw(canvas);
+            canvas.restore();
+        } catch (Exception ignored) {
+        } finally {
+            if (canvas != null) {
+                try { holder.unlockCanvasAndPost(canvas); } catch (Exception ignored) {}
+            }
+        }
+    }
+
     private void applyTeleOffset() {
         if (teleText == null || teleRoot == null) return;
-        float max = Math.max(0f, teleText.getHeight() - teleParams.height * .42f);
-        teleOffset = Math.min(teleOffset, max);
+        float max;
+        if (recording) {
+            max = Math.max(0f, ensureSecureTeleLayout().getHeight() - teleParams.height * .42f);
+        } else {
+            max = Math.max(0f, teleText.getHeight() - teleParams.height * .42f);
+        }
+        teleOffset = Math.max(0f, Math.min(teleOffset, max));
         teleText.setTranslationY(dp(70) - teleOffset);
+        if (recording) renderSecureTeleprompter();
     }
 
     private void changeFont(int delta) {
         fontSizeSp = clamp(fontSizeSp + delta, 20, 70);
+        teleSecureLayout = null;
+        teleSecureLayoutWidth = -1;
+        teleSecureLayoutFontSize = -1;
         teleText.setTextSize(fontSizeSp);
         teleText.post(this::applyTeleOffset);
     }
@@ -816,6 +914,16 @@ public final class LiveOverlayService extends Service {
             teleRoot.setBackground(recording
                     ? null
                     : roundedDrawable(0x44000000, 0xAA60A5FA, dp(18), dp(2)));
+        }
+        if (teleText != null) {
+            // Alpha zero keeps the TextView alive as the tactile scroll/pinch layer.
+            teleText.setAlpha(recording ? 0f : 1f);
+        }
+        if (teleSecureSurface != null) {
+            teleSecureSurface.setVisibility(recording
+                    ? android.view.View.VISIBLE
+                    : android.view.View.GONE);
+            if (recording) mainHandler.post(this::renderSecureTeleprompter);
         }
         if (tuningRow != null) {
             tuningRow.setVisibility(recording ? android.view.View.GONE : android.view.View.VISIBLE);
