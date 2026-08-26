@@ -1,0 +1,463 @@
+from pathlib import Path
+
+p = Path('app/src/main/java/com/chasmet/grokteleprompter/LiveOverlayService.java')
+s = p.read_text(encoding='utf-8')
+
+
+def rep(old, new, count=1):
+    global s
+    if old not in s:
+        raise SystemExit('Pattern missing:\n' + old[:300])
+    s = s.replace(old, new, count)
+
+
+rep('    private boolean recording;\n    private boolean paused;\n',
+    '    private boolean recording;\n    private boolean paused;\n    private boolean teleGestureActive;\n')
+
+rep('''        cameraParams = baseParams(dp(190), dp(250));
+        cameraParams.gravity = Gravity.TOP | Gravity.START;
+        cameraParams.x = dp(12);
+        cameraParams.y = dp(120);
+        cameraRoot = buildCameraWindow();
+        windowManager.addView(cameraRoot, cameraParams);
+
+        teleParams = baseParams(Math.max(dp(280), metrics.widthPixels - dp(24)), dp(300));
+        teleParams.gravity = Gravity.TOP | Gravity.START;
+        teleParams.x = dp(12);
+        teleParams.y = Math.max(dp(180), metrics.heightPixels / 2 - dp(120));
+        teleRoot = buildTeleWindow();
+        windowManager.addView(teleRoot, teleParams);
+
+        controlsParams = baseParams(Math.max(dp(300), metrics.widthPixels - dp(20)), WindowManager.LayoutParams.WRAP_CONTENT);
+        controlsParams.gravity = Gravity.TOP | Gravity.START;
+        controlsParams.x = dp(10);
+        controlsParams.y = dp(28);
+        controlsRoot = buildControlsWindow();
+        windowManager.addView(controlsRoot, controlsParams);
+''', '''        cameraParams = baseParams(dp(126), dp(168));
+        cameraParams.gravity = Gravity.TOP | Gravity.START;
+        cameraParams.x = dp(10);
+        cameraParams.y = dp(108);
+        cameraRoot = buildCameraWindow();
+        windowManager.addView(cameraRoot, cameraParams);
+
+        int teleWidth = Math.min(metrics.widthPixels - dp(28), dp(238));
+        teleParams = baseParams(Math.max(dp(170), teleWidth), dp(165));
+        teleParams.gravity = Gravity.TOP | Gravity.START;
+        teleParams.x = Math.max(dp(8), (metrics.widthPixels - teleParams.width) / 2);
+        teleParams.y = Math.max(dp(250), metrics.heightPixels - dp(275));
+        teleRoot = buildTeleWindow();
+        windowManager.addView(teleRoot, teleParams);
+
+        int controlsWidth = Math.min(metrics.widthPixels - dp(16), dp(248));
+        controlsParams = baseParams(Math.max(dp(210), controlsWidth), WindowManager.LayoutParams.WRAP_CONTENT);
+        controlsParams.gravity = Gravity.TOP | Gravity.START;
+        controlsParams.x = Math.max(dp(8), (metrics.widthPixels - controlsParams.width) / 2);
+        controlsParams.y = dp(22);
+        controlsRoot = buildControlsWindow();
+        windowManager.addView(controlsRoot, controlsParams);
+        attachControlsMove(statusText);
+''')
+
+rep('''        TextView move = handle("✥ CAM");
+        FrameLayout.LayoutParams moveLp = new FrameLayout.LayoutParams(dp(72), dp(34), Gravity.TOP | Gravity.START);
+        moveLp.leftMargin = dp(4);
+        moveLp.topMargin = dp(4);
+        root.addView(move, moveLp);
+        attachMoveHandle(move, root, cameraParams, false);
+
+        TextView resize = handle("↘");
+        FrameLayout.LayoutParams resizeLp = new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM | Gravity.END);
+        root.addView(resize, resizeLp);
+        attachResizeHandle(resize, root, cameraParams, dp(110), dp(140));
+
+        GradientDrawable outline = roundedDrawable(0x22000000, 0xAAFFFFFF, dp(18), dp(2));
+        root.setBackground(outline);
+        return root;
+''', '''        TextView move = handle("✥ CAM");
+        FrameLayout.LayoutParams moveLp = new FrameLayout.LayoutParams(dp(66), dp(30), Gravity.TOP | Gravity.START);
+        moveLp.leftMargin = dp(3);
+        moveLp.topMargin = dp(3);
+        root.addView(move, moveLp);
+        attachMoveHandle(move, root, cameraParams, false);
+
+        TextView resize = handle("↘");
+        resize.setTextSize(16);
+        FrameLayout.LayoutParams resizeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.BOTTOM | Gravity.END);
+        root.addView(resize, resizeLp);
+        attachResizeHandle(resize, root, cameraParams, dp(80), dp(108));
+
+        GradientDrawable outline = roundedDrawable(0x18000000, 0xCCFFFFFF, dp(15), dp(2));
+        root.setBackground(outline);
+        attachCameraDirectGesture(root);
+        return root;
+''')
+
+rep('''        TextView move = handle("✥ TÉLÉPROMPTEUR");
+        FrameLayout.LayoutParams moveLp = new FrameLayout.LayoutParams(dp(150), dp(34), Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        moveLp.topMargin = dp(4);
+        root.addView(move, moveLp);
+        attachMoveHandle(move, root, teleParams, true);
+
+        TextView resize = handle("↘");
+        FrameLayout.LayoutParams resizeLp = new FrameLayout.LayoutParams(dp(40), dp(40), Gravity.BOTTOM | Gravity.END);
+        root.addView(resize, resizeLp);
+        attachResizeHandle(resize, root, teleParams, dp(220), dp(150));
+''', '''        TextView move = handle("✥ TÉLÉPROMPTEUR · GLISSE");
+        FrameLayout.LayoutParams moveLp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, dp(34), Gravity.TOP);
+        moveLp.leftMargin = dp(4);
+        moveLp.rightMargin = dp(4);
+        moveLp.topMargin = dp(3);
+        root.addView(move, moveLp);
+        attachMoveHandle(move, root, teleParams, true);
+
+        TextView resize = handle("↘");
+        resize.setTextSize(16);
+        FrameLayout.LayoutParams resizeLp = new FrameLayout.LayoutParams(dp(52), dp(52), Gravity.BOTTOM | Gravity.END);
+        root.addView(resize, resizeLp);
+        attachResizeHandle(resize, root, teleParams, dp(150), dp(110));
+''')
+
+rep('''        root.addView(statusText, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(28)
+        ));
+''', '''        root.addView(statusText, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                dp(24)
+        ));
+''')
+rep('        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(42), 1f);',
+    '        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(34), 1f);')
+rep('        button.setTextSize(10);', '        button.setTextSize(8);')
+rep('        view.setTextSize(10);', '        view.setTextSize(9);')
+
+marker = '    private void attachMoveHandle(TextView handle, FrameLayout root, WindowManager.LayoutParams params, boolean tele) {'
+if marker not in s:
+    raise SystemExit('Move marker missing')
+helpers = '''    private int screenWidth() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getRealMetrics(metrics);
+        return metrics.widthPixels;
+    }
+
+    private int screenHeight() {
+        DisplayMetrics metrics = new DisplayMetrics();
+        windowManager.getDefaultDisplay().getRealMetrics(metrics);
+        return metrics.heightPixels;
+    }
+
+    private void moveOverlay(android.view.View root, WindowManager.LayoutParams params,
+                             int startX, int startY, int deltaX, int deltaY) {
+        int maxX = Math.max(0, screenWidth() - Math.max(1, params.width));
+        int maxY = Math.max(0, screenHeight() - Math.max(dp(40), params.height));
+        params.x = LiveOverlayGeometry.moved(startX, deltaX, 0, maxX);
+        params.y = LiveOverlayGeometry.moved(startY, deltaY, 0, maxY);
+        windowManager.updateViewLayout(root, params);
+    }
+
+    private void resizeOverlay(android.view.View root, WindowManager.LayoutParams params,
+                               int startW, int startH, int deltaW, int deltaH,
+                               int minW, int minH) {
+        int maxW = Math.max(minW, screenWidth() - dp(8));
+        int maxH = Math.max(minH, screenHeight() - dp(70));
+        params.width = LiveOverlayGeometry.resized(startW, deltaW, minW, maxW);
+        params.height = LiveOverlayGeometry.resized(startH, deltaH, minH, maxH);
+        params.x = LiveOverlayGeometry.clamp(params.x, 0, Math.max(0, screenWidth() - params.width));
+        params.y = LiveOverlayGeometry.clamp(params.y, 0, Math.max(0, screenHeight() - params.height));
+        windowManager.updateViewLayout(root, params);
+        if (root == teleRoot) applyTeleOffset();
+    }
+
+    private void scaleOverlay(android.view.View root, WindowManager.LayoutParams params,
+                              int startW, int startH, float scale, int minW, int minH) {
+        int maxW = Math.max(minW, screenWidth() - dp(8));
+        int maxH = Math.max(minH, screenHeight() - dp(70));
+        params.width = LiveOverlayGeometry.scaled(startW, scale, minW, maxW);
+        params.height = LiveOverlayGeometry.scaled(startH, scale, minH, maxH);
+        params.x = LiveOverlayGeometry.clamp(params.x, 0, Math.max(0, screenWidth() - params.width));
+        params.y = LiveOverlayGeometry.clamp(params.y, 0, Math.max(0, screenHeight() - params.height));
+        windowManager.updateViewLayout(root, params);
+        if (root == teleRoot) applyTeleOffset();
+    }
+
+    private void attachCameraDirectGesture(FrameLayout root) {
+        root.setOnTouchListener(new android.view.View.OnTouchListener() {
+            float startRawX;
+            float startRawY;
+            float startDistance;
+            int startX;
+            int startY;
+            int startW;
+            int startH;
+            boolean scaling;
+
+            @Override
+            public boolean onTouch(android.view.View v, MotionEvent event) {
+                int action = event.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    startRawX = event.getRawX();
+                    startRawY = event.getRawY();
+                    startX = cameraParams.x;
+                    startY = cameraParams.y;
+                    startW = cameraParams.width;
+                    startH = cameraParams.height;
+                    scaling = false;
+                    return true;
+                }
+                if (action == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() >= 2) {
+                    startDistance = LiveOverlayGeometry.distance(
+                            event.getX(0), event.getY(0), event.getX(1), event.getY(1));
+                    startW = cameraParams.width;
+                    startH = cameraParams.height;
+                    scaling = startDistance > 1f;
+                    return true;
+                }
+                if (action == MotionEvent.ACTION_MOVE) {
+                    if (event.getPointerCount() >= 2 && scaling && startDistance > 1f) {
+                        float current = LiveOverlayGeometry.distance(
+                                event.getX(0), event.getY(0), event.getX(1), event.getY(1));
+                        scaleOverlay(root, cameraParams, startW, startH,
+                                current / startDistance, dp(80), dp(108));
+                    } else if (!scaling) {
+                        moveOverlay(root, cameraParams, startX, startY,
+                                Math.round(event.getRawX() - startRawX),
+                                Math.round(event.getRawY() - startRawY));
+                    }
+                    return true;
+                }
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    scaling = false;
+                    return true;
+                }
+                return true;
+            }
+        });
+    }
+
+    private void attachControlsMove(TextView handle) {
+        handle.setOnTouchListener(new android.view.View.OnTouchListener() {
+            float startRawX;
+            float startRawY;
+            int startX;
+            int startY;
+
+            @Override
+            public boolean onTouch(android.view.View v, MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    startRawX = event.getRawX();
+                    startRawY = event.getRawY();
+                    startX = controlsParams.x;
+                    startY = controlsParams.y;
+                    return true;
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    moveOverlay(controlsRoot, controlsParams, startX, startY,
+                            Math.round(event.getRawX() - startRawX),
+                            Math.round(event.getRawY() - startRawY));
+                    return true;
+                }
+                return true;
+            }
+        });
+    }
+
+'''
+s = s.replace(marker, helpers + marker, 1)
+
+rep('''            public boolean onTouch(android.view.View v, MotionEvent event) {
+                if (recording && !paused) return true;
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    startRawX = event.getRawX();
+                    startRawY = event.getRawY();
+                    startX = params.x;
+                    startY = params.y;
+                    return true;
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    params.x = startX + Math.round(event.getRawX() - startRawX);
+                    params.y = Math.max(0, startY + Math.round(event.getRawY() - startRawY));
+                    windowManager.updateViewLayout(root, params);
+                    return true;
+                }
+                return true;
+            }
+''', '''            public boolean onTouch(android.view.View v, MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    startRawX = event.getRawX();
+                    startRawY = event.getRawY();
+                    startX = params.x;
+                    startY = params.y;
+                    return true;
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    moveOverlay(root, params, startX, startY,
+                            Math.round(event.getRawX() - startRawX),
+                            Math.round(event.getRawY() - startRawY));
+                    return true;
+                }
+                return true;
+            }
+''', 1)
+
+rep('''            public boolean onTouch(android.view.View v, MotionEvent event) {
+                if (recording && !paused) return true;
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    startRawX = event.getRawX();
+                    startRawY = event.getRawY();
+                    startW = params.width;
+                    startH = params.height;
+                    return true;
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    params.width = Math.max(minW, startW + Math.round(event.getRawX() - startRawX));
+                    params.height = Math.max(minH, startH + Math.round(event.getRawY() - startRawY));
+                    windowManager.updateViewLayout(root, params);
+                    if (root == teleRoot) applyTeleOffset();
+                    return true;
+                }
+                return true;
+            }
+''', '''            public boolean onTouch(android.view.View v, MotionEvent event) {
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    startRawX = event.getRawX();
+                    startRawY = event.getRawY();
+                    startW = params.width;
+                    startH = params.height;
+                    return true;
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    resizeOverlay(root, params, startW, startH,
+                            Math.round(event.getRawX() - startRawX),
+                            Math.round(event.getRawY() - startRawY), minW, minH);
+                    return true;
+                }
+                return true;
+            }
+''', 1)
+
+rep('''    private void attachManualTeleScroll(TextView textView) {
+        textView.setOnTouchListener(new android.view.View.OnTouchListener() {
+            float startY;
+            float startOffset;
+
+            @Override
+            public boolean onTouch(android.view.View v, MotionEvent event) {
+                if (recording && !paused) return false;
+                if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                    startY = event.getRawY();
+                    startOffset = teleOffset;
+                    return true;
+                }
+                if (event.getActionMasked() == MotionEvent.ACTION_MOVE) {
+                    teleOffset = Math.max(0f, startOffset - (event.getRawY() - startY));
+                    applyTeleOffset();
+                    return true;
+                }
+                return true;
+            }
+        });
+    }
+''', '''    private void attachManualTeleScroll(TextView textView) {
+        textView.setOnTouchListener(new android.view.View.OnTouchListener() {
+            float startY;
+            float startOffset;
+            float startDistance;
+            int startW;
+            int startH;
+            boolean scaling;
+
+            @Override
+            public boolean onTouch(android.view.View v, MotionEvent event) {
+                int action = event.getActionMasked();
+                if (action == MotionEvent.ACTION_DOWN) {
+                    teleGestureActive = true;
+                    startY = event.getRawY();
+                    startOffset = teleOffset;
+                    scaling = false;
+                    return true;
+                }
+                if (action == MotionEvent.ACTION_POINTER_DOWN && event.getPointerCount() >= 2) {
+                    startDistance = LiveOverlayGeometry.distance(
+                            event.getX(0), event.getY(0), event.getX(1), event.getY(1));
+                    startW = teleParams.width;
+                    startH = teleParams.height;
+                    scaling = startDistance > 1f;
+                    return true;
+                }
+                if (action == MotionEvent.ACTION_MOVE) {
+                    if (event.getPointerCount() >= 2 && scaling && startDistance > 1f) {
+                        float current = LiveOverlayGeometry.distance(
+                                event.getX(0), event.getY(0), event.getX(1), event.getY(1));
+                        scaleOverlay(teleRoot, teleParams, startW, startH,
+                                current / startDistance, dp(150), dp(110));
+                    } else if (!scaling) {
+                        teleOffset = Math.max(0f, startOffset - (event.getRawY() - startY));
+                        applyTeleOffset();
+                    }
+                    return true;
+                }
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                    teleGestureActive = false;
+                    scaling = false;
+                    return true;
+                }
+                return true;
+            }
+        });
+    }
+''')
+
+rep('''            if (!recording || paused) return;
+            long now = android.os.SystemClock.uptimeMillis();
+''', '''            if (!recording || paused) return;
+            if (teleGestureActive) {
+                teleLastFrame = android.os.SystemClock.uptimeMillis();
+                mainHandler.postDelayed(this, 16L);
+                return;
+            }
+            long now = android.os.SystemClock.uptimeMillis();
+''')
+
+rep('''    private void resizeCamera(float factor) {
+        if (recording && !paused) return;
+        cameraParams.width = clamp(Math.round(cameraParams.width * factor), dp(110), dp(420));
+        cameraParams.height = clamp(Math.round(cameraParams.height * factor), dp(140), dp(560));
+        windowManager.updateViewLayout(cameraRoot, cameraParams);
+    }
+
+    private void updateInteractivity() {
+        boolean locked = recording && !paused;
+        setTouchable(cameraRoot, cameraParams, !locked);
+        setTouchable(teleRoot, teleParams, !locked);
+    }
+''', '''    private void resizeCamera(float factor) {
+        scaleOverlay(cameraRoot, cameraParams, cameraParams.width, cameraParams.height,
+                factor, dp(80), dp(108));
+    }
+
+    private void updateInteractivity() {
+        setTouchable(cameraRoot, cameraParams, true);
+        setTouchable(teleRoot, teleParams, true);
+        setTouchable(controlsRoot, controlsParams, true);
+    }
+''')
+
+rep('''    private void flipCamera() {
+        if (recording && !paused) return;
+        cameraFacing = cameraFacing == CameraCharacteristics.LENS_FACING_FRONT
+''', '''    private void flipCamera() {
+        cameraFacing = cameraFacing == CameraCharacteristics.LENS_FACING_FRONT
+''')
+
+rep('''        if (!recording) statusText.setText("LIVE prêt · Caméra détourée · vitesse " + speed);
+        else if (paused) statusText.setText("PAUSE · caméra + téléprompteur figés · déplace et redimensionne");
+        else statusText.setText("● REC · navigation libre · vitesse " + speed);
+''', '''        if (!recording) statusText.setText("✥ LIVE prêt · déplace tout · V" + speed);
+        else if (paused) statusText.setText("✥ PAUSE · gestes actifs · V" + speed);
+        else statusText.setText("✥ ● REC · gestes actifs · V" + speed);
+''')
+
+p.write_text(s, encoding='utf-8')
+print('LiveOverlayService patched')
