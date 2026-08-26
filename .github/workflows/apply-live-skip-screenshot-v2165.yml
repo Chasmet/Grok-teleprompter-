@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - tools/apply_live_skip_screenshot_v2165.py
+      - .github/workflows/apply-live-skip-screenshot-v2165.yml
   workflow_dispatch:
 
 permissions:
