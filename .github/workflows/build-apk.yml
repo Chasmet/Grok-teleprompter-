@@ -32,7 +32,9 @@ jobs:
           gradle-version: '8.13'
 
       - name: Vérifier JavaScript
-        run: node --check script.js
+        run: |
+          node --check script.js
+          node --check live-mode.js
 
       - name: Installer les tests de l’interface
         run: npm ci
@@ -55,12 +57,12 @@ jobs:
         run: gradle :app:lintDebug :app:assembleDebug --stacktrace
 
       - name: Renommer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.15.1.apk
+        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.16.0.apk
 
       - name: Publier l'APK téléchargeable
         uses: actions/upload-artifact@v4
         with:
           name: Grok-Teleprompter-APK
-          path: Grok-Teleprompter-v2.15.1.apk
+          path: Grok-Teleprompter-v2.16.0.apk
           if-no-files-found: error
           retention-days: 30
