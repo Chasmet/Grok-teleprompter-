@@ -1,0 +1,165 @@
+.modeGate,
+.liveSetup {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  overflow-y: auto;
+  padding: max(22px, env(safe-area-inset-top)) 14px max(26px, env(safe-area-inset-bottom));
+  background: radial-gradient(circle at top,#112b56 0,#07111f 36%,#030712 100%);
+  color: #fff;
+}
+.modeGate.hidden,
+.liveSetup.hidden { display: none; }
+.modeGateInner,
+.liveSetupCard {
+  width: min(760px,100%);
+  margin: 0 auto;
+}
+.modeGateBrand,
+.liveBadge {
+  width: max-content;
+  max-width: 100%;
+  margin: 8px auto 14px;
+  padding: 7px 12px;
+  border: 1px solid rgba(96,165,250,.5);
+  border-radius: 999px;
+  background: rgba(15,23,42,.72);
+  color: #bfdbfe;
+  font-size: 12px;
+  font-weight: 1000;
+  letter-spacing: .08em;
+  text-align: center;
+}
+.modeGate h1,
+.liveSetup h2 {
+  margin: 0;
+  color: #fff;
+  text-align: center;
+  font-weight: 1000;
+  line-height: 1.08;
+}
+.modeGate h1 { font-size: clamp(32px,9vw,58px); }
+.liveSetup h2 { font-size: clamp(24px,7vw,42px); }
+.modeGateLead,
+.liveSetupCard > p {
+  margin: 10px auto 20px;
+  max-width: 620px;
+  color: #b7c8e3;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+  text-align: center;
+}
+.modeGateChoices {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 12px;
+  margin-top: 24px;
+}
+.modeGateCard {
+  min-height: 230px;
+  padding: 20px 14px;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 11px;
+  border: 2px solid rgba(255,255,255,.14);
+  border-radius: 24px;
+  color: #fff;
+  box-shadow: 0 18px 50px rgba(0,0,0,.35);
+  touch-action: manipulation;
+}
+.modeGateCard.classic { background: linear-gradient(145deg,#1d4ed8,#5b21b6); }
+.modeGateCard.green { background: linear-gradient(145deg,#047857,#10b981); }
+.modeGateCard.live { background: linear-gradient(145deg,#9f1239,#f97316); border-color: #fb7185; }
+.modeGateCard:active { transform: scale(.98); }
+.modeGateIcon { font-size: 44px; line-height: 1; }
+.modeGateCard strong { font-size: 19px; font-weight: 1000; line-height: 1.1; text-align: center; }
+.modeGateCard small { color: rgba(255,255,255,.88); font-size: 12px; font-weight: 800; line-height: 1.35; text-align: center; }
+
+.liveSetupCard {
+  padding: 10px 0 30px;
+}
+.liveBadge { border-color: rgba(251,113,133,.75); color: #fecdd3; }
+.liveField {
+  margin-top: 14px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 16px;
+  background: rgba(15,23,42,.88);
+  color: #e5edf9;
+  font-size: 13px;
+  font-weight: 900;
+}
+.liveField textarea {
+  min-height: 170px;
+  resize: vertical;
+  padding: 12px;
+  border: 1px solid rgba(96,165,250,.42);
+  border-radius: 12px;
+  background: #020617;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.45;
+}
+.liveField input[type="range"] { width: 100%; }
+.liveField output { color: #93c5fd; }
+.liveFeatureGrid {
+  margin: 14px 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.liveFeatureGrid span {
+  padding: 10px;
+  border: 1px solid rgba(52,211,153,.24);
+  border-radius: 12px;
+  background: rgba(6,95,70,.2);
+  color: #d1fae5;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+.launchLiveOverlay,
+.closeLiveSetup {
+  width: 100%;
+  min-height: 60px;
+  margin-top: 10px;
+  border-radius: 16px;
+  color: #fff;
+  font-weight: 1000;
+  touch-action: manipulation;
+}
+.launchLiveOverlay {
+  border: 2px solid #fb7185;
+  background: linear-gradient(135deg,#be123c,#f97316);
+  box-shadow: 0 12px 30px rgba(190,18,60,.25);
+}
+.launchLiveOverlay:disabled { opacity: .55; }
+.closeLiveSetup {
+  border: 1px solid rgba(255,255,255,.14);
+  background: #1e293b;
+}
+.livePermissionHint { font-size: 10px !important; color: #94a3b8 !important; }
+.studioModeTabs { grid-template-columns: repeat(3,minmax(0,1fr)) !important; }
+.studioModeButton.live.active {
+  border-color: #fb7185;
+  background: linear-gradient(135deg,#be123c,#f97316);
+  box-shadow: 0 0 0 3px rgba(251,113,133,.16);
+}
+.studioModeButton.live strong { font-size: 14px; }
+.studioModeButton.live span { font-size: 10px; }
+
+@media (max-width: 620px) {
+  .modeGateChoices { grid-template-columns: 1fr; }
+  .modeGateCard { min-height: 150px; grid-template-columns: 58px 1fr; text-align: left; justify-items: start; }
+  .modeGateCard small { grid-column: 2; text-align: left; }
+  .modeGateIcon { grid-row: 1 / span 2; align-self: center; }
+  .liveFeatureGrid { grid-template-columns: 1fr; }
+  .studioModeTabs { gap: 6px !important; }
+  .studioModeButton { min-height: 86px !important; padding: 8px 4px !important; }
+  .studioModeButton strong { font-size: 13px !important; }
+  .studioModeButton span { font-size: 9px !important; }
+}
