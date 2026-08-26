@@ -60,6 +60,8 @@ import com.google.mlkit.vision.segmentation.SegmentationMask;
 import com.google.mlkit.vision.segmentation.Segmenter;
 import com.google.mlkit.vision.segmentation.selfie.SelfieSegmenterOptions;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
@@ -734,8 +736,9 @@ public final class LiveOverlayService extends Service {
         try {
             int mw = mask.getWidth();
             int mh = mask.getHeight();
-            FloatBuffer buffer = mask.getBuffer();
-            buffer.rewind();
+            ByteBuffer bytes = mask.getBuffer();
+            bytes.rewind();
+            FloatBuffer buffer = bytes.order(ByteOrder.nativeOrder()).asFloatBuffer();
             int[] alphaPixels = new int[mw * mh];
             for (int i = 0; i < alphaPixels.length && buffer.hasRemaining(); i++) {
                 float confidence = buffer.get();
