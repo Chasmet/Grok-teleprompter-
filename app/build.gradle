@@ -10,8 +10,8 @@ android {
         applicationId 'com.chasmet.grokteleprompter'
         minSdk 29
         targetSdk 36
-        versionCode 19
-        versionName '2.15.1'
+        versionCode 20
+        versionName '2.16.0'
     }
 
     buildTypes {
@@ -36,7 +36,7 @@ def generatedWebAssets = layout.buildDirectory.dir('generated/webAssets')
 
 tasks.register('syncWebAssets', Sync) {
     from(rootProject.projectDir) {
-        include 'index.html', 'style.css', 'script.js', 'native-audio-worklet.js', 'manifest.json', 'sw.js', 'icon-512.png'
+        include 'index.html', 'style.css', 'script.js', 'live-mode.css', 'live-mode.js', 'native-audio-worklet.js', 'manifest.json', 'sw.js', 'icon-512.png'
     }
     into(generatedWebAssets)
 }
