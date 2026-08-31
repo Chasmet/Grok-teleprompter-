@@ -1,0 +1,38 @@
+name: Patch teleprompter transform test v2.17.1
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-test-selector-v2171.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Fix text offset assertion
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/app.e2e.js')
+          s = p.read_text()
+          old = "page.locator('#teleScroll').evaluate((el) => Number.parseFloat(el.style.getPropertyValue('--move')) || 0)"
+          new = "page.locator('#teleText').evaluate((el) => Math.abs(Number.parseFloat((el.style.transform.match(/-?[0-9.]+/) || ['0'])[0])) || 0)"
+          if s.count(old) != 2:
+              raise SystemExit('Expected two old offset assertions')
+          p.write_text(s.replace(old, new))
+          PY
+          git diff --check
+      - name: Commit corrected assertion
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tests/app.e2e.js
+          git commit -m 'test: measure real teleprompter text transform'
+          git push origin main
