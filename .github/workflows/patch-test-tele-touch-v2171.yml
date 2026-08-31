@@ -68,3 +68,5 @@ jobs:
           git add tests/app.e2e.js
           git commit -m 'test: verify teleprompter text drag during recording'
           git push origin main
+
+# retrigger
