@@ -58,7 +58,7 @@
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
     panStart: null, lastTap: 0,
     teleRaf: 0, teleStartedAt: 0, teleRunning: false, telePaused: false, teleOffsetPx: 0,
-    teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, downloadUrl: '',
+    teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, teleTouchWasRunning: false, downloadUrl: '',
     segmentationSupported: false, segmentationBusy: false, segmentationReady: false,
     segmentationRequestId: 0, segmentationTimer: 0, segmentationRenderId: 0,
     segmentationMask: null, segmentationCaptureCanvas: null
@@ -2014,24 +2014,37 @@
   elements.pauseBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.pause(); });
   elements.telePauseToggle?.addEventListener('click', toggleTeleprompterPause);
   elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (!state.telePaused) return;
-    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle) return;
+    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || state.teleTouchPointer !== -1) return;
     state.teleTouchPointer = event.pointerId;
     state.teleTouchStartY = event.clientY;
+    state.teleOffsetPx = currentTeleOffset();
     state.teleTouchStartOffset = state.teleOffsetPx;
+    state.teleTouchWasRunning = state.teleRunning && !state.telePaused;
+    if (state.teleTouchWasRunning) {
+      state.teleRunning = false;
+      if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
+      state.teleRaf = 0;
+    }
     try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
     event.preventDefault();
   });
   elements.teleprompter.addEventListener('pointermove', (event) => {
-    if (!state.telePaused || event.pointerId !== state.teleTouchPointer) return;
+    if (event.pointerId !== state.teleTouchPointer) return;
     const delta = event.clientY - state.teleTouchStartY;
     setTeleOffset(state.teleTouchStartOffset - delta);
     event.preventDefault();
   });
   const finishTeleTouch = (event) => {
     if (event.pointerId !== state.teleTouchPointer) return;
+    const resumeAfterTouch = state.teleTouchWasRunning && !state.telePaused && teleHasText();
     state.teleTouchPointer = -1;
+    state.teleTouchWasRunning = false;
     try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}
+    if (resumeAfterTouch) {
+      updateTeleScrollMode();
+      if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) runTeleprompterFrom(state.teleOffsetPx);
+      else setTeleOffset(state.teleOffsetPx);
+    }
   };
   elements.teleprompter.addEventListener('pointerup', finishTeleTouch);
   elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);
@@ -2362,7 +2375,7 @@
 
   elements.teleprompter.addEventListener('pointerdown', (event) => {
     const explicitHandle = event.target === elements.teleMoveHandle || event.target === elements.teleResizeHandle;
-    if (state.telePaused && !explicitHandle) return;
+    if (!explicitHandle) return;
     const point = { id: event.pointerId, x: event.clientX, y: event.clientY };
     state.telePointers.set(event.pointerId, point);
     try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
