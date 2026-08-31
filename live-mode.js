@@ -3,6 +3,10 @@
 
   const $ = (id) => document.getElementById(id);
 
+  function openNativeSettings() {
+    window.location.href = 'grok-settings://open';
+  }
+
   function copyLiveSettingsToMain(textarea, speed, size) {
     const scriptInput = $('scriptInput');
     const speedRange = $('speedRange');
@@ -53,6 +57,7 @@
           <span>✓ Micro intégré du téléphone</span>
         </div>
         <button id="launchLiveOverlay" class="launchLiveOverlay" type="button">LANCER LE LIVE SUR MON ÉCRAN</button>
+        <button id="liveSettingsButton" class="closeLiveSetup" type="button">⚙ Réglages · Mises à jour</button>
         <button id="closeLiveSetup" class="closeLiveSetup" type="button">Retour aux 3 modes</button>
         <p class="livePermissionHint">Au premier lancement Android demandera l’autorisation d’afficher par-dessus les applis puis l’autorisation de capturer l’écran.</p>
       </div>`;
@@ -72,6 +77,7 @@
 
     speed.addEventListener('input', () => { $('liveSpeedValue').textContent = speed.value; });
     size.addEventListener('input', () => { $('liveSizeValue').textContent = size.value; });
+    $('liveSettingsButton').addEventListener('click', openNativeSettings);
 
     $('launchLiveOverlay').addEventListener('click', () => {
       copyLiveSettingsToMain(script, speed, size);
@@ -100,6 +106,7 @@
         <div class="modeGateBrand">GROK TÉLÉPROMPTEUR STUDIO</div>
         <h1>Choisis ton mode</h1>
         <p class="modeGateLead">3 studios séparés. Tu peux changer ensuite depuis l’application.</p>
+        <button id="gateSettings" type="button" aria-label="Ouvrir les réglages et mises à jour">⚙ RÉGLAGES · MISES À JOUR</button>
         <div class="modeGateChoices">
           <button id="gateClassic" class="modeGateCard classic" type="button">
             <span class="modeGateIcon">▣</span>
@@ -119,6 +126,21 @@
         </div>
       </div>`;
     document.body.appendChild(gate);
+
+    const settings = $('gateSettings');
+    settings.style.cssText = [
+      'width:100%',
+      'min-height:52px',
+      'margin:0 0 18px',
+      'border-radius:18px',
+      'border:1px solid rgba(147,197,253,.5)',
+      'background:rgba(15,35,70,.82)',
+      'color:#dbeafe',
+      'font-weight:900',
+      'font-size:14px',
+      'letter-spacing:.04em'
+    ].join(';');
+    settings.addEventListener('click', openNativeSettings);
 
     $('gateClassic').addEventListener('click', () => {
       $('classicStudioTab')?.click();
@@ -153,6 +175,28 @@
     $('greenStudioTab')?.addEventListener('click', () => live.classList.remove('active'));
   }
 
+  function addSettingsShortcut() {
+    const switcher = document.querySelector('.studioModeSwitcher');
+    if (!switcher || $('studioSettingsButton')) return;
+    const button = document.createElement('button');
+    button.id = 'studioSettingsButton';
+    button.type = 'button';
+    button.textContent = '⚙ Réglages · Mises à jour';
+    button.style.cssText = [
+      'width:100%',
+      'min-height:48px',
+      'margin-top:10px',
+      'border-radius:14px',
+      'border:1px solid rgba(147,197,253,.35)',
+      'background:rgba(15,35,70,.72)',
+      'color:#dbeafe',
+      'font-weight:800',
+      'font-size:14px'
+    ].join(';');
+    button.addEventListener('click', openNativeSettings);
+    switcher.appendChild(button);
+  }
+
   window.addEventListener('DOMContentLoaded', () => {
     const setup = createLiveSetup();
     let gate;
@@ -163,6 +207,7 @@
     };
     gate = createModeGate(openLiveSetup);
     addLiveStudioTab(openLiveSetup);
+    addSettingsShortcut();
     $('closeLiveSetup').addEventListener('click', () => {
       setup.classList.add('hidden');
       gate.classList.remove('hidden');
