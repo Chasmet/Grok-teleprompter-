@@ -19,6 +19,7 @@ jobs:
       - name: Apply REC touch fix
         run: |
           python3 tools/fix_tele_rec_touch_v2172.py
+          python3 tools/fix_tele_rec_touch_test_v2172.py
           git diff --check
           node --check script.js
       - name: Install interface tests
@@ -37,4 +38,4 @@ jobs:
           git commit -m 'fix: enable teleprompter touch during recording v2.17.2'
           git push origin main
 
-# real touchscreen REC drag test
+# scan visible touch area and send real touchscreen gesture
