@@ -174,6 +174,13 @@ test('camera, microphone, facecam gestures and recording work together', async (
   expect(await page.locator('#cameraVideo').evaluate((video) => video.readyState)).toBeGreaterThanOrEqual(2);
 
   const frame = page.locator('#faceFrame');
+  const dispatchTouchDrag = async (downTarget, moveTarget, fromX, fromY, toX, toY, pointerId) => {
+    const base = { pointerId, pointerType: 'touch', isPrimary: true, bubbles: true, cancelable: true };
+    await downTarget.dispatchEvent('pointerdown', { ...base, clientX: fromX, clientY: fromY, buttons: 1 });
+    await moveTarget.dispatchEvent('pointermove', { ...base, clientX: toX, clientY: toY, buttons: 1 });
+    await moveTarget.dispatchEvent('pointerup', { ...base, clientX: toX, clientY: toY, buttons: 0 });
+  };
+
   await frame.scrollIntoViewIfNeeded();
   const vertical = await frame.boundingBox();
   expect(vertical.width / vertical.height).toBeLessThan(.65);
@@ -181,19 +188,17 @@ test('camera, microphone, facecam gestures and recording work together', async (
   await expect(page.locator('#faceFormatHorizontal')).toBeChecked();
   const start = await frame.boundingBox();
   expect(start.width / start.height).toBeGreaterThan(1.65);
-  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(start.x + start.width / 2 + 24, start.y + start.height / 2 + 30, { steps: 4 });
-  await page.mouse.up();
+  const startX = start.x + start.width / 2;
+  const startY = start.y + start.height / 2;
+  await dispatchTouchDrag(frame, frame, startX, startY, startX + 24, startY + 30, 41);
   const moved = await frame.boundingBox();
   expect(Math.abs(moved.x - start.x) + Math.abs(moved.y - start.y)).toBeGreaterThan(18);
 
   const handle = page.locator('#faceResizeHandle');
   const resize = await handle.boundingBox();
-  await page.mouse.move(resize.x + resize.width / 2, resize.y + resize.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(resize.x + resize.width / 2 + 25, resize.y + resize.height / 2 + 25, { steps: 4 });
-  await page.mouse.up();
+  const resizeX = resize.x + resize.width / 2;
+  const resizeY = resize.y + resize.height / 2;
+  await dispatchTouchDrag(handle, frame, resizeX, resizeY, resizeX + 25, resizeY + 25, 42);
   const enlarged = await frame.boundingBox();
   expect(enlarged.width).toBeGreaterThan(moved.width + 10);
 
@@ -206,16 +211,11 @@ test('camera, microphone, facecam gestures and recording work together', async (
 
   await page.locator('#recBtn').click();
   await expect(page.locator('#stopBtn')).toBeEnabled({ timeout: 10_000 });
-  // Clicking the record bar scrolls the mobile viewport below the preview.
-  // Bring the facecam back into view before sending real pointer coordinates.
   await frame.scrollIntoViewIfNeeded();
   const beforeRecordingMove = await frame.boundingBox();
-  await page.mouse.move(beforeRecordingMove.x + beforeRecordingMove.width / 2,
-    beforeRecordingMove.y + beforeRecordingMove.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(beforeRecordingMove.x + beforeRecordingMove.width / 2 - 22,
-    beforeRecordingMove.y + beforeRecordingMove.height / 2 + 18, { steps: 4 });
-  await page.mouse.up();
+  const recX = beforeRecordingMove.x + beforeRecordingMove.width / 2;
+  const recY = beforeRecordingMove.y + beforeRecordingMove.height / 2;
+  await dispatchTouchDrag(frame, frame, recX, recY, recX - 22, recY + 18, 43);
   const movedDuringRecording = await frame.boundingBox();
   expect(Math.abs(movedDuringRecording.x - beforeRecordingMove.x)
     + Math.abs(movedDuringRecording.y - beforeRecordingMove.y)).toBeGreaterThan(12);
