@@ -17,127 +17,55 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Apply teleprompter tactile anytime
+      - name: Enable text drag at any time
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          p = Path('script.js')
+          s = p.read_text()
 
-          script_path = Path('script.js')
-          s = script_path.read_text()
+          replacements = [
+            ("teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, downloadUrl: '',",
+             "teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, teleTouchWasRunning: false, downloadUrl: '',"),
+            ("if (state.telePaused && !explicitHandle) return;", "if (!explicitHandle) return;"),
+            ("    if (!state.telePaused) return;\n    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle) return;\n    state.teleTouchPointer = event.pointerId;\n    state.teleTouchStartY = event.clientY;\n    state.teleTouchStartOffset = state.teleOffsetPx;",
+             "    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || state.teleTouchPointer !== -1) return;\n    state.teleTouchPointer = event.pointerId;\n    state.teleTouchStartY = event.clientY;\n    state.teleOffsetPx = currentTeleOffset();\n    state.teleTouchStartOffset = state.teleOffsetPx;\n    state.teleTouchWasRunning = state.teleRunning && !state.telePaused;\n    if (state.teleTouchWasRunning) {\n      state.teleRunning = false;\n      if (state.teleRaf) cancelAnimationFrame(state.teleRaf);\n      state.teleRaf = 0;\n    }"),
+            ("    if (!state.telePaused || event.pointerId !== state.teleTouchPointer) return;",
+             "    if (event.pointerId !== state.teleTouchPointer) return;"),
+            ("    if (event.pointerId !== state.teleTouchPointer) return;\n    state.teleTouchPointer = -1;\n    try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}",
+             "    if (event.pointerId !== state.teleTouchPointer) return;\n    const resumeAfterTouch = state.teleTouchWasRunning && !state.telePaused && teleHasText();\n    state.teleTouchPointer = -1;\n    state.teleTouchWasRunning = false;\n    try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}\n    if (resumeAfterTouch) {\n      updateTeleScrollMode();\n      if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) runTeleprompterFrom(state.teleOffsetPx);\n      else setTeleOffset(state.teleOffsetPx);\n    }"),
+          ]
+          for old, new in replacements:
+              if old not in s:
+                  raise SystemExit('Expected script block not found: ' + old[:80])
+              s = s.replace(old, new, 1)
+          p.write_text(s)
 
-          old_state = "teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, downloadUrl: '',"
-          new_state = "teleTouchPointer: -1, teleTouchStartY: 0, teleTouchStartOffset: 0, teleTouchWasRunning: false, downloadUrl: '',"
-          if old_state not in s:
-              raise SystemExit('tele touch state block not found')
-          s = s.replace(old_state, new_state, 1)
+          p = Path('index.html')
+          s = p.read_text()
+          old = 'En pause : glisse le texte avec le doigt. Utilise ✥ Déplacer le texte pour bouger le cadre, même pendant REC.'
+          new = 'Glisse le texte vers le haut ou le bas à tout moment, même pendant REC. Utilise ✥ Déplacer le texte pour bouger le cadre.'
+          if old not in s: raise SystemExit('Help text not found')
+          p.write_text(s.replace(old, new, 1))
 
-          old_layout_guard = "if (state.telePaused && !explicitHandle) return;"
-          new_layout_guard = "if (!explicitHandle) return;"
-          if old_layout_guard not in s:
-              raise SystemExit('tele layout gesture guard not found')
-          s = s.replace(old_layout_guard, new_layout_guard, 1)
-
-          old_touch = '''  elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (!state.telePaused) return;
-    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle) return;
-    state.teleTouchPointer = event.pointerId;
-    state.teleTouchStartY = event.clientY;
-    state.teleTouchStartOffset = state.teleOffsetPx;
-    try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
-    event.preventDefault();
-  });
-  elements.teleprompter.addEventListener('pointermove', (event) => {
-    if (!state.telePaused || event.pointerId !== state.teleTouchPointer) return;
-    const delta = event.clientY - state.teleTouchStartY;
-    setTeleOffset(state.teleTouchStartOffset - delta);
-    event.preventDefault();
-  });
-  const finishTeleTouch = (event) => {
-    if (event.pointerId !== state.teleTouchPointer) return;
-    state.teleTouchPointer = -1;
-    try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}
-  };
-  elements.teleprompter.addEventListener('pointerup', finishTeleTouch);
-  elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);'''
-
-          new_touch = '''  elements.teleprompter.addEventListener('pointerdown', (event) => {
-    const explicitHandle = event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle;
-    if (explicitHandle || state.teleTouchPointer !== -1) return;
-
-    state.teleTouchPointer = event.pointerId;
-    state.teleTouchStartY = event.clientY;
-    state.teleOffsetPx = currentTeleOffset();
-    state.teleTouchStartOffset = state.teleOffsetPx;
-    state.teleTouchWasRunning = state.teleRunning && !state.telePaused;
-
-    if (state.teleTouchWasRunning) {
-      state.teleRunning = false;
-      if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
-      state.teleRaf = 0;
-    }
-
-    try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
-    event.preventDefault();
-  });
-  elements.teleprompter.addEventListener('pointermove', (event) => {
-    if (event.pointerId !== state.teleTouchPointer) return;
-    const delta = event.clientY - state.teleTouchStartY;
-    setTeleOffset(state.teleTouchStartOffset - delta);
-    event.preventDefault();
-  });
-  const finishTeleTouch = (event) => {
-    if (event.pointerId !== state.teleTouchPointer) return;
-    const resumeAfterTouch = state.teleTouchWasRunning && !state.telePaused && teleHasText();
-    state.teleTouchPointer = -1;
-    state.teleTouchWasRunning = false;
-    try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}
-
-    if (resumeAfterTouch) {
-      updateTeleScrollMode();
-      if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) {
-        runTeleprompterFrom(state.teleOffsetPx);
-      } else {
-        setTeleOffset(state.teleOffsetPx);
-      }
-    }
-  };
-  elements.teleprompter.addEventListener('pointerup', finishTeleTouch);
-  elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);'''
-
-          if old_touch not in s:
-              raise SystemExit('paused-only tele touch block not found')
-          s = s.replace(old_touch, new_touch, 1)
-          script_path.write_text(s)
-
-          index_path = Path('index.html')
-          html = index_path.read_text()
-          old_help = 'En pause : glisse le texte avec le doigt. Utilise ✥ Déplacer le texte pour bouger le cadre, même pendant REC.'
-          new_help = 'Glisse le texte vers le haut ou le bas à tout moment, même pendant REC. Utilise ✥ Déplacer le texte pour bouger le cadre.'
-          if old_help not in html:
-              raise SystemExit('teleprompter help text not found')
-          index_path.write_text(html.replace(old_help, new_help, 1))
-
-          gradle_path = Path('app/build.gradle')
-          gradle = gradle_path.read_text()
-          if "versionCode 25" not in gradle or "versionName '2.17.0'" not in gradle:
-              raise SystemExit('expected v2.17.0 version not found')
-          gradle = gradle.replace('versionCode 25', 'versionCode 26', 1)
-          gradle = gradle.replace("versionName '2.17.0'", "versionName '2.17.1'", 1)
-          gradle_path.write_text(gradle)
+          p = Path('app/build.gradle')
+          s = p.read_text()
+          if "versionCode 25" not in s or "versionName '2.17.0'" not in s:
+              raise SystemExit('Expected v2.17.0 not found')
+          s = s.replace('versionCode 25', 'versionCode 26', 1).replace("versionName '2.17.0'", "versionName '2.17.1'", 1)
+          p.write_text(s)
           PY
-
           node --check script.js
           grep -q "teleTouchWasRunning" script.js
-          grep -q "if (!explicitHandle) return;" script.js
           grep -q "versionName '2.17.1'" app/build.gradle
           git diff --check
 
-      - name: Run static tests
+      - name: Run tests
         run: |
           npm ci
           npm test
 
-      - name: Commit teleprompter update
+      - name: Commit update
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
