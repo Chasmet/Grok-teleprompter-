@@ -11,7 +11,8 @@ end = s.find(end_marker, start)
 if end < 0:
     raise SystemExit('REC touch test CDP marker not found')
 
-replacement = r'''  const touchPoint = await page.evaluate(() => {
+replacement = r'''  await prompt.scrollIntoViewIfNeeded();
+  const touchPoint = await page.evaluate(() => {
     const tele = document.querySelector('#teleprompter');
     const stage = document.querySelector('#stage');
     const tr = tele.getBoundingClientRect();
