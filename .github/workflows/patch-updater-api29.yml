@@ -20,24 +20,24 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p = Path('app/src/main/java/com/chasmet/grokteleprompter/SettingsActivity.java')
           s = p.read_text()
-          old = '''        try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
-              byte[] bytes = input.readAllBytes();
-              return new String(bytes, StandardCharsets.UTF_8);
-          } finally {'''
-          new = '''        try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
-              java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-              byte[] buffer = new byte[8192];
-              int read;
-              while ((read = input.read(buffer)) != -1) {
-                  output.write(buffer, 0, read);
-              }
-              return new String(output.toByteArray(), StandardCharsets.UTF_8);
-          } finally {'''
-          if old not in s:
-              raise SystemExit('Expected readText block not found')
-          p.write_text(s.replace(old, new, 1))
+          pattern = re.compile(r'(?m)^(\s*)byte\[\] bytes = input\.readAllBytes\(\);\n\1return new String\(bytes, StandardCharsets\.UTF_8\);')
+          match = pattern.search(s)
+          if not match:
+              raise SystemExit('Expected readAllBytes lines not found')
+          indent = match.group(1)
+          replacement = (
+              indent + 'java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();\n' +
+              indent + 'byte[] buffer = new byte[8192];\n' +
+              indent + 'int read;\n' +
+              indent + 'while ((read = input.read(buffer)) != -1) {\n' +
+              indent + '    output.write(buffer, 0, read);\n' +
+              indent + '}\n' +
+              indent + 'return new String(output.toByteArray(), StandardCharsets.UTF_8);'
+          )
+          p.write_text(pattern.sub(replacement, s, count=1))
           PY
           ! grep -q 'readAllBytes' app/src/main/java/com/chasmet/grokteleprompter/SettingsActivity.java
           git diff --check
