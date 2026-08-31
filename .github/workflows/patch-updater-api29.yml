@@ -1,0 +1,50 @@
+name: Patch updater API 29 compatibility
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-updater-api29.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Replace Android 13-only stream API
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/chasmet/grokteleprompter/SettingsActivity.java')
+          s = p.read_text()
+          old = '''        try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
+              byte[] bytes = input.readAllBytes();
+              return new String(bytes, StandardCharsets.UTF_8);
+          } finally {'''
+          new = '''        try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
+              java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+              byte[] buffer = new byte[8192];
+              int read;
+              while ((read = input.read(buffer)) != -1) {
+                  output.write(buffer, 0, read);
+              }
+              return new String(output.toByteArray(), StandardCharsets.UTF_8);
+          } finally {'''
+          if old not in s:
+              raise SystemExit('Expected readText block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          ! grep -q 'readAllBytes' app/src/main/java/com/chasmet/grokteleprompter/SettingsActivity.java
+          git diff --check
+      - name: Commit compatibility fix
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/chasmet/grokteleprompter/SettingsActivity.java
+          git commit -m 'fix: support updater on Android 10+' || exit 0
+          git push origin main
