@@ -36,3 +36,5 @@ jobs:
           git add tests/app.e2e.js
           git commit -m 'test: measure real teleprompter text transform'
           git push origin main
+
+# retrigger
