@@ -384,8 +384,13 @@ public final class SettingsActivity extends Activity {
     private String readText(String url) throws Exception {
         HttpURLConnection connection = openConnection(url);
         try (InputStream input = new BufferedInputStream(connection.getInputStream())) {
-            byte[] bytes = input.readAllBytes();
-            return new String(bytes, StandardCharsets.UTF_8);
+            java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         } finally {
             connection.disconnect();
         }
