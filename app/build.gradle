@@ -2,6 +2,21 @@ plugins {
     id 'com.android.application'
 }
 
+import java.util.Base64
+import java.util.Properties
+
+final File signingPropertiesFile = rootProject.file('signing/signing.properties')
+final File signingBase64File = rootProject.file('signing/grok-update.p12.b64')
+final Properties signingProperties = new Properties()
+signingPropertiesFile.withInputStream { signingProperties.load(it) }
+
+final File generatedSigningDir = layout.buildDirectory.dir('generated/stableSigning').get().asFile
+final File generatedSigningStore = new File(generatedSigningDir, 'grok-update.p12')
+if (!generatedSigningStore.exists()) {
+    generatedSigningDir.mkdirs()
+    generatedSigningStore.bytes = Base64.decoder.decode(signingBase64File.text.trim())
+}
+
 android {
     namespace 'com.chasmet.grokteleprompter'
     compileSdk 36
@@ -10,12 +25,26 @@ android {
         applicationId 'com.chasmet.grokteleprompter'
         minSdk 29
         targetSdk 36
-        versionCode 24
-        versionName '2.16.6'
+        versionCode 25
+        versionName '2.17.0'
+    }
+
+    signingConfigs {
+        stableUpdate {
+            storeFile generatedSigningStore
+            storePassword signingProperties.getProperty('storePassword')
+            keyAlias signingProperties.getProperty('keyAlias')
+            keyPassword signingProperties.getProperty('keyPassword')
+            storeType signingProperties.getProperty('storeType', 'PKCS12')
+        }
     }
 
     buildTypes {
+        debug {
+            signingConfig signingConfigs.stableUpdate
+        }
         release {
+            signingConfig signingConfigs.stableUpdate
             minifyEnabled true
             shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -45,6 +74,7 @@ android.sourceSets.main.assets.srcDir(generatedWebAssets)
 tasks.named('preBuild').configure { dependsOn tasks.named('syncWebAssets') }
 
 dependencies {
+    implementation 'androidx.core:core:1.13.1'
     implementation 'androidx.webkit:webkit:1.8.0'
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
