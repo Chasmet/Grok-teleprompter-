@@ -69,9 +69,11 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
   await expect(page.locator('#teleScrollState')).toHaveText('Texte court : reste fixe');
 
   const start = await prompt.boundingBox();
-  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+  const moveHandle = page.locator('#teleMoveHandle');
+  const move = await moveHandle.boundingBox();
+  await page.mouse.move(move.x + move.width / 2, move.y + move.height / 2);
   await page.mouse.down();
-  await page.mouse.move(start.x + start.width / 2 - 14, start.y + start.height / 2 + 22, { steps: 4 });
+  await page.mouse.move(move.x + move.width / 2 - 14, move.y + move.height / 2 + 22, { steps: 4 });
   await page.mouse.up();
   const moved = await prompt.boundingBox();
   expect(Math.abs(moved.y - start.y)).toBeGreaterThan(10);
@@ -92,6 +94,18 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
   await page.locator('#scriptInput').fill(Array(100).fill('Un texte long pour vérifier le défilement automatique.').join(' '));
   await expect(prompt).toHaveAttribute('data-scroll-mode', 'scroll');
   await expect(page.locator('#teleScrollState')).toHaveText('Texte long : défilement automatique');
+
+  const beforeTextDrag = await page.locator('#teleScroll').evaluate((el) => Number.parseFloat(el.style.getPropertyValue('--move')) || 0);
+  await page.evaluate(() => {
+    document.body.classList.add('recording');
+    const tele = document.querySelector('#teleprompter');
+    tele.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 77, pointerType: 'touch', clientY: 220 }));
+    tele.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 77, pointerType: 'touch', clientY: 150 }));
+    tele.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 77, pointerType: 'touch', clientY: 150 }));
+    document.body.classList.remove('recording');
+  });
+  const afterTextDrag = await page.locator('#teleScroll').evaluate((el) => Number.parseFloat(el.style.getPropertyValue('--move')) || 0);
+  expect(afterTextDrag).toBeGreaterThan(beforeTextDrag + 20);
 });
 
 test('image import and media controls remain coherent', async ({ page }) => {
