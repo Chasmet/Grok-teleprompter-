@@ -2,19 +2,16 @@ plugins {
     id 'com.android.application'
 }
 
-import java.util.Base64
-import java.util.Properties
-
 final File signingPropertiesFile = rootProject.file('signing/signing.properties')
 final File signingBase64File = rootProject.file('signing/grok-update.p12.b64')
-final Properties signingProperties = new Properties()
+final java.util.Properties signingProperties = new java.util.Properties()
 signingPropertiesFile.withInputStream { signingProperties.load(it) }
 
 final File generatedSigningDir = layout.buildDirectory.dir('generated/stableSigning').get().asFile
 final File generatedSigningStore = new File(generatedSigningDir, 'grok-update.p12')
 if (!generatedSigningStore.exists()) {
     generatedSigningDir.mkdirs()
-    generatedSigningStore.bytes = Base64.decoder.decode(signingBase64File.text.trim())
+    generatedSigningStore.bytes = java.util.Base64.decoder.decode(signingBase64File.text.trim())
 }
 
 android {
