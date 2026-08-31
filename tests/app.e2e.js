@@ -95,7 +95,7 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
   await expect(prompt).toHaveAttribute('data-scroll-mode', 'scroll');
   await expect(page.locator('#teleScrollState')).toHaveText('Texte long : défilement automatique');
 
-  const beforeTextDrag = await page.locator('#teleScroll').evaluate((el) => Number.parseFloat(el.style.getPropertyValue('--move')) || 0);
+  const beforeTextDrag = await page.locator('#teleText').evaluate((el) => Math.abs(Number.parseFloat((el.style.transform.match(/-?[0-9.]+/) || ['0'])[0])) || 0);
   await page.evaluate(() => {
     document.body.classList.add('recording');
     const tele = document.querySelector('#teleprompter');
@@ -104,7 +104,7 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
     tele.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 77, pointerType: 'touch', clientY: 150 }));
     document.body.classList.remove('recording');
   });
-  const afterTextDrag = await page.locator('#teleScroll').evaluate((el) => Number.parseFloat(el.style.getPropertyValue('--move')) || 0);
+  const afterTextDrag = await page.locator('#teleText').evaluate((el) => Math.abs(Number.parseFloat((el.style.transform.match(/-?[0-9.]+/) || ['0'])[0])) || 0);
   expect(afterTextDrag).toBeGreaterThan(beforeTextDrag + 20);
 });
 
