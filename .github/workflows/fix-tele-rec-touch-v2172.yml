@@ -33,6 +33,8 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add style.css app/build.gradle tests/app.e2e.js
+          git add style.css script.js app/build.gradle tests/app.e2e.js
           git commit -m 'fix: enable teleprompter touch during recording v2.17.2'
           git push origin main
+
+# strengthened Android WebView touch path
