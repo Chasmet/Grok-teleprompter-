@@ -9,28 +9,72 @@ if old_css not in css:
     raise SystemExit('recording teleprompter pointer-events rule not found')
 css_path.write_text(css.replace(old_css, new_css, 1))
 
-# 2) Make teleprompter text dragging robust in Android WebView.
+# 2) Replace the body-text pointer gesture with a global, geometry-based gesture.
+# This avoids Android WebView losing the gesture when REC changes the visible layers.
 script_path = Path('script.js')
 script = script_path.read_text()
+start_marker = "  elements.teleprompter.addEventListener('pointerdown', (event) => {\n    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || state.teleTouchPointer !== -1) return;"
+end_marker = "  elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);"
+start = script.find(start_marker)
+if start < 0:
+    raise SystemExit('teleprompter text pointerdown block not found')
+end = script.find(end_marker, start)
+if end < 0:
+    raise SystemExit('teleprompter text finish block not found')
+end += len(end_marker)
 
-old_pointerdown = """  elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || state.teleTouchPointer !== -1) return;"""
-new_pointerdown = """  elements.teleprompter.addEventListener('pointerdown', (event) => {
+new_block = r'''  const pointInsideTeleprompter = (clientX, clientY) => {
+    if (elements.teleprompter.classList.contains('hide')) return false;
+    const box = elements.teleprompter.getBoundingClientRect();
+    return clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
+  };
+
+  const teleTextGestureBlocked = (target) => {
+    if (!target) return false;
+    if (elements.teleMoveHandle?.contains(target) || elements.teleResizeHandle?.contains(target)) return true;
+    if (!elements.faceFrame.classList.contains('hide') && elements.faceFrame.contains(target)) return true;
+    return false;
+  };
+
+  const beginTeleTextPointer = (event) => {
     if (event.pointerType === 'touch') return;
-    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || state.teleTouchPointer !== -1) return;"""
-if old_pointerdown not in script:
-    raise SystemExit('teleprompter pointerdown block not found')
-script = script.replace(old_pointerdown, new_pointerdown, 1)
+    if (state.teleTouchPointer !== -1 || teleTextGestureBlocked(event.target)) return;
+    if (!pointInsideTeleprompter(event.clientX, event.clientY)) return;
+    state.teleTouchPointer = event.pointerId;
+    state.teleTouchStartY = event.clientY;
+    state.teleOffsetPx = currentTeleOffset();
+    state.teleTouchStartOffset = state.teleOffsetPx;
+    state.teleTouchWasRunning = state.teleRunning && !state.telePaused;
+    if (state.teleTouchWasRunning) {
+      state.teleRunning = false;
+      if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
+      state.teleRaf = 0;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
 
-old_move = "  elements.teleprompter.addEventListener('pointermove', (event) => {"
-new_move = "  window.addEventListener('pointermove', (event) => {"
-if old_move not in script:
-    raise SystemExit('teleprompter pointermove listener not found')
-script = script.replace(old_move, new_move, 1)
+  document.addEventListener('pointerdown', beginTeleTextPointer, true);
+  window.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== state.teleTouchPointer) return;
+    const delta = event.clientY - state.teleTouchStartY;
+    setTeleOffset(state.teleTouchStartOffset - delta);
+    event.preventDefault();
+  }, true);
 
-old_finish = """  elements.teleprompter.addEventListener('pointerup', finishTeleTouch);
-  elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);"""
-new_finish = """  window.addEventListener('pointerup', finishTeleTouch, true);
+  const finishTeleTouch = (event) => {
+    if (event.pointerId !== state.teleTouchPointer) return;
+    const resumeAfterTouch = state.teleTouchWasRunning && !state.telePaused && teleHasText();
+    state.teleTouchPointer = -1;
+    state.teleTouchWasRunning = false;
+    if (resumeAfterTouch) {
+      updateTeleScrollMode();
+      if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) runTeleprompterFrom(state.teleOffsetPx);
+      else setTeleOffset(state.teleOffsetPx);
+    }
+    event.preventDefault();
+  };
+  window.addEventListener('pointerup', finishTeleTouch, true);
   window.addEventListener('pointercancel', finishTeleTouch, true);
 
   let teleNativeTouchId = null;
@@ -38,10 +82,10 @@ new_finish = """  window.addEventListener('pointerup', finishTeleTouch, true);
   let teleNativeTouchStartOffset = 0;
   let teleNativeTouchWasRunning = false;
 
-  elements.teleprompter.addEventListener('touchstart', (event) => {
-    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || teleNativeTouchId !== null) return;
+  document.addEventListener('touchstart', (event) => {
+    if (teleNativeTouchId !== null || teleTextGestureBlocked(event.target)) return;
     const touch = event.changedTouches?.[0];
-    if (!touch) return;
+    if (!touch || !pointInsideTeleprompter(touch.clientX, touch.clientY)) return;
     teleNativeTouchId = touch.identifier;
     teleNativeTouchStartY = touch.clientY;
     state.teleOffsetPx = currentTeleOffset();
@@ -53,16 +97,17 @@ new_finish = """  window.addEventListener('pointerup', finishTeleTouch, true);
       state.teleRaf = 0;
     }
     event.preventDefault();
-  }, { passive: false });
+    event.stopPropagation();
+  }, { passive: false, capture: true });
 
-  elements.teleprompter.addEventListener('touchmove', (event) => {
+  document.addEventListener('touchmove', (event) => {
     if (teleNativeTouchId === null) return;
     const touch = Array.from(event.touches || []).find((item) => item.identifier === teleNativeTouchId);
     if (!touch) return;
     const delta = touch.clientY - teleNativeTouchStartY;
     setTeleOffset(teleNativeTouchStartOffset - delta);
     event.preventDefault();
-  }, { passive: false });
+  }, { passive: false, capture: true });
 
   const finishNativeTeleTouch = (event) => {
     if (teleNativeTouchId === null) return;
@@ -78,11 +123,10 @@ new_finish = """  window.addEventListener('pointerup', finishTeleTouch, true);
     }
     event.preventDefault();
   };
-  elements.teleprompter.addEventListener('touchend', finishNativeTeleTouch, { passive: false });
-  elements.teleprompter.addEventListener('touchcancel', finishNativeTeleTouch, { passive: false });"""
-if old_finish not in script:
-    raise SystemExit('teleprompter pointer finish listeners not found')
-script = script.replace(old_finish, new_finish, 1)
+  document.addEventListener('touchend', finishNativeTeleTouch, { passive: false, capture: true });
+  document.addEventListener('touchcancel', finishNativeTeleTouch, { passive: false, capture: true });'''
+
+script = script[:start] + new_block + script[end:]
 script_path.write_text(script)
 
 # 3) Bump the Android update version.
@@ -94,7 +138,7 @@ gradle = gradle.replace('versionCode 26', 'versionCode 27', 1)
 gradle = gradle.replace("versionName '2.17.1'", "versionName '2.17.2'", 1)
 gradle_path.write_text(gradle)
 
-# 4) Replace the synthetic event test with a real hit-tested drag while recording.
+# 4) Replace the synthetic test with a real, hit-tested drag while recording.
 test_path = Path('tests/app.e2e.js')
 test = test_path.read_text()
 old = """  const beforeTextDrag = await page.locator('#teleText').evaluate((el) => Math.abs(Number.parseFloat((el.style.transform.match(/-?[0-9.]+/) || ['0'])[0])) || 0);
@@ -115,6 +159,12 @@ new = """  const beforeTextDrag = await page.locator('#teleText').evaluate((el) 
   const dragX = recBox.x + recBox.width * 0.28;
   const dragStartY = recBox.y + recBox.height * 0.68;
   const dragEndY = recBox.y + recBox.height * 0.36;
+  const hitInside = await page.evaluate(({ x, y }) => {
+    const tele = document.querySelector('#teleprompter');
+    const hit = document.elementFromPoint(x, y);
+    return Boolean(hit && (hit === tele || tele.contains(hit)));
+  }, { x: dragX, y: dragStartY });
+  expect(hitInside).toBeTruthy();
   await page.mouse.move(dragX, dragStartY);
   await page.mouse.down();
   await page.mouse.move(dragX, dragEndY, { steps: 8 });
