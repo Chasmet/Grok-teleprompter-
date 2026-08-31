@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -56,13 +56,48 @@ jobs:
       - name: Analyser et construire l'APK
         run: gradle :app:lintDebug :app:assembleDebug --stacktrace
 
-      - name: Renommer l'APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.16.0.apk
+      - name: Préparer le nom de version
+        id: version
+        shell: bash
+        run: |
+          VERSION=$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" app/build.gradle | head -1)
+          if [ -z "$VERSION" ]; then
+            echo "Version Android introuvable" >&2
+            exit 1
+          fi
+          APK="Grok-Teleprompter-v${VERSION}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$APK"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Vérifier la signature stable
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "${{ steps.version.outputs.apk }}"
 
       - name: Publier l'APK téléchargeable
         uses: actions/upload-artifact@v4
         with:
           name: Grok-Teleprompter-APK
-          path: Grok-Teleprompter-v2.16.0.apk
+          path: ${{ steps.version.outputs.apk }}
           if-no-files-found: error
           retention-days: 30
+
+      - name: Publier la mise à jour interne GitHub
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+          APK: ${{ steps.version.outputs.apk }}
+        run: |
+          TAG="v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" --clobber
+            gh release edit "$TAG" \
+              --title "Grok Téléprompteur v${VERSION}" \
+              --notes "Mise à jour interne Grok Téléprompteur v${VERSION}. Téléchargement et installation disponibles directement depuis Réglages > Mise à jour interne."
+          else
+            gh release create "$TAG" "$APK" \
+              --title "Grok Téléprompteur v${VERSION}" \
+              --notes "Mise à jour interne Grok Téléprompteur v${VERSION}. Téléchargement et installation disponibles directement depuis Réglages > Mise à jour interne." \
+              --latest
+          fi
