@@ -2013,8 +2013,23 @@
   elements.playBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.play().catch(() => {}); });
   elements.pauseBtn.addEventListener('click', () => { if (state.mediaType === 'video') elements.mediaVideo.pause(); });
   elements.telePauseToggle?.addEventListener('click', toggleTeleprompterPause);
-  elements.teleprompter.addEventListener('pointerdown', (event) => {
-    if (event.target === elements.teleResizeHandle || event.target === elements.teleMoveHandle || state.teleTouchPointer !== -1) return;
+  const pointInsideTeleprompter = (clientX, clientY) => {
+    if (elements.teleprompter.classList.contains('hide')) return false;
+    const box = elements.teleprompter.getBoundingClientRect();
+    return clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
+  };
+
+  const teleTextGestureBlocked = (target) => {
+    if (!target) return false;
+    if (elements.teleMoveHandle?.contains(target) || elements.teleResizeHandle?.contains(target)) return true;
+    if (!elements.faceFrame.classList.contains('hide') && elements.faceFrame.contains(target)) return true;
+    return false;
+  };
+
+  const beginTeleTextPointer = (event) => {
+    if (event.pointerType === 'touch') return;
+    if (state.teleTouchPointer !== -1 || teleTextGestureBlocked(event.target)) return;
+    if (!pointInsideTeleprompter(event.clientX, event.clientY)) return;
     state.teleTouchPointer = event.pointerId;
     state.teleTouchStartY = event.clientY;
     state.teleOffsetPx = currentTeleOffset();
@@ -2025,29 +2040,81 @@
       if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
       state.teleRaf = 0;
     }
-    try { elements.teleprompter.setPointerCapture(event.pointerId); } catch (_) {}
     event.preventDefault();
-  });
-  elements.teleprompter.addEventListener('pointermove', (event) => {
+    event.stopPropagation();
+  };
+
+  document.addEventListener('pointerdown', beginTeleTextPointer, true);
+  window.addEventListener('pointermove', (event) => {
     if (event.pointerId !== state.teleTouchPointer) return;
     const delta = event.clientY - state.teleTouchStartY;
     setTeleOffset(state.teleTouchStartOffset - delta);
     event.preventDefault();
-  });
+  }, true);
+
   const finishTeleTouch = (event) => {
     if (event.pointerId !== state.teleTouchPointer) return;
     const resumeAfterTouch = state.teleTouchWasRunning && !state.telePaused && teleHasText();
     state.teleTouchPointer = -1;
     state.teleTouchWasRunning = false;
-    try { elements.teleprompter.releasePointerCapture(event.pointerId); } catch (_) {}
     if (resumeAfterTouch) {
       updateTeleScrollMode();
       if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) runTeleprompterFrom(state.teleOffsetPx);
       else setTeleOffset(state.teleOffsetPx);
     }
+    event.preventDefault();
   };
-  elements.teleprompter.addEventListener('pointerup', finishTeleTouch);
-  elements.teleprompter.addEventListener('pointercancel', finishTeleTouch);
+  window.addEventListener('pointerup', finishTeleTouch, true);
+  window.addEventListener('pointercancel', finishTeleTouch, true);
+
+  let teleNativeTouchId = null;
+  let teleNativeTouchStartY = 0;
+  let teleNativeTouchStartOffset = 0;
+  let teleNativeTouchWasRunning = false;
+
+  document.addEventListener('touchstart', (event) => {
+    if (teleNativeTouchId !== null || teleTextGestureBlocked(event.target)) return;
+    const touch = event.changedTouches?.[0];
+    if (!touch || !pointInsideTeleprompter(touch.clientX, touch.clientY)) return;
+    teleNativeTouchId = touch.identifier;
+    teleNativeTouchStartY = touch.clientY;
+    state.teleOffsetPx = currentTeleOffset();
+    teleNativeTouchStartOffset = state.teleOffsetPx;
+    teleNativeTouchWasRunning = state.teleRunning && !state.telePaused;
+    if (teleNativeTouchWasRunning) {
+      state.teleRunning = false;
+      if (state.teleRaf) cancelAnimationFrame(state.teleRaf);
+      state.teleRaf = 0;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }, { passive: false, capture: true });
+
+  document.addEventListener('touchmove', (event) => {
+    if (teleNativeTouchId === null) return;
+    const touch = Array.from(event.touches || []).find((item) => item.identifier === teleNativeTouchId);
+    if (!touch) return;
+    const delta = touch.clientY - teleNativeTouchStartY;
+    setTeleOffset(teleNativeTouchStartOffset - delta);
+    event.preventDefault();
+  }, { passive: false, capture: true });
+
+  const finishNativeTeleTouch = (event) => {
+    if (teleNativeTouchId === null) return;
+    const touch = Array.from(event.changedTouches || []).find((item) => item.identifier === teleNativeTouchId);
+    if (!touch && event.type !== 'touchcancel') return;
+    const resumeAfterTouch = teleNativeTouchWasRunning && !state.telePaused && teleHasText();
+    teleNativeTouchId = null;
+    teleNativeTouchWasRunning = false;
+    if (resumeAfterTouch) {
+      updateTeleScrollMode();
+      if (state.teleShouldScroll && state.teleOffsetPx < maxTeleMove()) runTeleprompterFrom(state.teleOffsetPx);
+      else setTeleOffset(state.teleOffsetPx);
+    }
+    event.preventDefault();
+  };
+  document.addEventListener('touchend', finishNativeTeleTouch, { passive: false, capture: true });
+  document.addEventListener('touchcancel', finishNativeTeleTouch, { passive: false, capture: true });
   elements.mediaVideo.addEventListener('ended', () => {
     if (state.mediaType === 'video' && state.mode !== 'live' && state.recorder?.state === 'recording') {
       stopRecording('media-ended');
