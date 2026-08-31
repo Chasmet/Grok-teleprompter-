@@ -138,7 +138,7 @@ gradle = gradle.replace('versionCode 26', 'versionCode 27', 1)
 gradle = gradle.replace("versionName '2.17.1'", "versionName '2.17.2'", 1)
 gradle_path.write_text(gradle)
 
-# 4) Replace the synthetic test with a real, hit-tested drag while recording.
+# 4) Replace the synthetic test with a real hit-tested touchscreen drag while recording.
 test_path = Path('tests/app.e2e.js')
 test = test_path.read_text()
 old = """  const beforeTextDrag = await page.locator('#teleText').evaluate((el) => Math.abs(Number.parseFloat((el.style.transform.match(/-?[0-9.]+/) || ['0'])[0])) || 0);
@@ -156,19 +156,29 @@ new = """  const beforeTextDrag = await page.locator('#teleText').evaluate((el) 
   await page.evaluate(() => document.body.classList.add('recording'));
   await expect(prompt).toHaveCSS('pointer-events', 'auto');
   const recBox = await prompt.boundingBox();
-  const dragX = recBox.x + recBox.width * 0.28;
-  const dragStartY = recBox.y + recBox.height * 0.68;
-  const dragEndY = recBox.y + recBox.height * 0.36;
+  const stageBox = await page.locator('#stage').boundingBox();
+  const left = Math.max(recBox.x, stageBox.x) + 4;
+  const right = Math.min(recBox.x + recBox.width, stageBox.x + stageBox.width) - 4;
+  const top = Math.max(recBox.y, stageBox.y) + 4;
+  const bottom = Math.min(recBox.y + recBox.height, stageBox.y + stageBox.height) - 4;
+  expect(right - left).toBeGreaterThan(30);
+  expect(bottom - top).toBeGreaterThan(60);
+  const dragX = left + (right - left) * 0.28;
+  const dragStartY = top + (bottom - top) * 0.72;
+  const dragEndY = top + (bottom - top) * 0.34;
   const hitInside = await page.evaluate(({ x, y }) => {
     const tele = document.querySelector('#teleprompter');
     const hit = document.elementFromPoint(x, y);
     return Boolean(hit && (hit === tele || tele.contains(hit)));
   }, { x: dragX, y: dragStartY });
   expect(hitInside).toBeTruthy();
-  await page.mouse.move(dragX, dragStartY);
-  await page.mouse.down();
-  await page.mouse.move(dragX, dragEndY, { steps: 8 });
-  await page.mouse.up();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: dragX, y: dragStartY, id: 1 }] });
+  for (let step = 1; step <= 8; step += 1) {
+    const y = dragStartY + (dragEndY - dragStartY) * (step / 8);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: dragX, y, id: 1 }] });
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.evaluate(() => document.body.classList.remove('recording'));
   const afterTextDrag = await page.locator('#teleText').evaluate((el) => Math.abs(Number.parseFloat((el.style.transform.match(/-?[0-9.]+/) || ['0'])[0])) || 0);
   expect(afterTextDrag).toBeGreaterThan(beforeTextDrag + 20);"""
