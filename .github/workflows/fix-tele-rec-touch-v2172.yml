@@ -37,4 +37,4 @@ jobs:
           git commit -m 'fix: enable teleprompter touch during recording v2.17.2'
           git push origin main
 
-# geometry-based REC drag test
+# real touchscreen REC drag test
