@@ -71,7 +71,6 @@ android.sourceSets.main.assets.srcDir(generatedWebAssets)
 tasks.named('preBuild').configure { dependsOn tasks.named('syncWebAssets') }
 
 dependencies {
-    implementation 'androidx.core:core:1.13.1'
     implementation 'androidx.webkit:webkit:1.8.0'
     implementation 'com.google.mlkit:segmentation-selfie:16.0.0-beta6'
     implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:6.1'
