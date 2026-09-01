@@ -45,11 +45,15 @@ jobs:
               "await page.locator('#teleFormatVertical').check();",
               "await page.locator('label:has(#teleFormatVertical) span').click();\n  await expect(page.locator('#teleFormatVertical')).toBeChecked();"
           )
-          tests = tests.replace(
-              "  const start = await prompt.boundingBox();",
-              "  await prompt.scrollIntoViewIfNeeded();\n  const start = await prompt.boundingBox();",
-              1
-          )
+
+          orientation_start = tests.index("  await expect(page.locator('.teleOrientationPicker')).toBeVisible();")
+          free_move_start = tests.index("  const start = await prompt.boundingBox();", orientation_start)
+          orientation_block = tests[orientation_start:free_move_start]
+          tests = tests[:orientation_start] + tests[free_move_start:]
+
+          insert_marker = "  expect(resized.width).toBeLessThan(moved.width - 10);\n\n"
+          insert_at = tests.index(insert_marker) + len(insert_marker)
+          tests = tests[:insert_at] + orientation_block + "  await prompt.scrollIntoViewIfNeeded();\n\n" + tests[insert_at:]
           test_path.write_text(tests)
           PY
           git diff --check
