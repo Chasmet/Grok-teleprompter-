@@ -101,3 +101,5 @@ jobs:
               --notes "Mise à jour interne Grok Téléprompteur v${VERSION}. Téléchargement et installation disponibles directement depuis Réglages > Mise à jour interne." \
               --latest
           fi
+
+# publication v2.17.3 après validation portrait/paysage
