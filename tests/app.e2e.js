@@ -67,7 +67,6 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
   await expect(prompt).toBeVisible();
   await expect(prompt).toHaveAttribute('data-scroll-mode', 'static');
   await expect(page.locator('#teleScrollState')).toHaveText('Texte court : reste fixe');
-
   const start = await prompt.boundingBox();
   const moveHandle = page.locator('#teleMoveHandle');
   const move = await moveHandle.boundingBox();
@@ -86,6 +85,24 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
   await page.mouse.up();
   const resized = await prompt.boundingBox();
   expect(resized.width).toBeLessThan(moved.width - 10);
+
+  await expect(page.locator('.teleOrientationPicker')).toBeVisible();
+
+  await page.locator('label:has(#teleFormatHorizontal) span').click();
+  await expect(page.locator('#teleFormatHorizontal')).toBeChecked();
+  await expect(prompt).toHaveAttribute('data-orientation', 'horizontal');
+  const horizontal = await prompt.boundingBox();
+  expect(horizontal.width / horizontal.height).toBeGreaterThan(1.70);
+  expect(horizontal.width / horizontal.height).toBeLessThan(1.86);
+
+  await page.locator('label:has(#teleFormatVertical) span').click();
+  await expect(page.locator('#teleFormatVertical')).toBeChecked();
+  await expect(prompt).toHaveAttribute('data-orientation', 'vertical');
+  const vertical = await prompt.boundingBox();
+  expect(vertical.width / vertical.height).toBeGreaterThan(.53);
+  expect(vertical.width / vertical.height).toBeLessThan(.60);
+
+  await prompt.scrollIntoViewIfNeeded();
 
   const oldSize = Number(await page.locator('#sizeRange').inputValue());
   await page.locator('#textLargerBtn').click();

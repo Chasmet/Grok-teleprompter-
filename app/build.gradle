@@ -22,8 +22,8 @@ android {
         applicationId 'com.chasmet.grokteleprompter'
         minSdk 29
         targetSdk 36
-        versionCode 27
-        versionName '2.17.2'
+        versionCode 28
+        versionName '2.17.3'
     }
 
     signingConfigs {

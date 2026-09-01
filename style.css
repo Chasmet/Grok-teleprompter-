@@ -134,8 +134,9 @@ body[data-mode="facecam"] .faceFrame { z-index: 50; }
 .gestureHelp { display: grid; gap: 3px; padding: 7px 12px; border-bottom: 1px solid rgba(255,255,255,.07); background: #081027; color: #9fb5d5; text-align: center; font-size: 10px; font-weight: 800; }
 body:not([data-mode="facecam"]) .gestureHelp span:first-child { display: none; }
 
-.formatPicker { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #0b1430; }
+.formatPicker, .teleOrientationPicker { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #0b1430; }
 .formatTitle { margin-bottom: 8px; color: #dbeafe; font-size: 13px; font-weight: 900; text-align: center; }
+.teleOrientationHint { margin: 7px 2px 0; color: #93a8c7; font-size: 10px; font-weight: 800; line-height: 1.35; text-align: center; }
 .formatChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
 .formatChoice { position: relative; min-width: 0; }
 .formatChoice input { position: absolute; opacity: 0; pointer-events: none; }

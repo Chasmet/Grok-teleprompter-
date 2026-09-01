@@ -83,6 +83,21 @@
         <span id="teleScrollState">Texte court : reste fixe</span>
       </section>
 
+      <section class="teleOrientationPicker" aria-label="Orientation du téléprompteur">
+        <div class="formatTitle">Orientation du téléprompteur</div>
+        <div class="formatChoices">
+          <label class="formatChoice">
+            <input id="teleFormatVertical" name="teleprompterFormat" type="radio" value="vertical" checked>
+            <span>▯ Portrait <strong>9:16</strong></span>
+          </label>
+          <label class="formatChoice">
+            <input id="teleFormatHorizontal" name="teleprompterFormat" type="radio" value="horizontal">
+            <span>▭ Paysage <strong>16:9</strong></span>
+          </label>
+        </div>
+        <p class="teleOrientationHint">Pour une vidéo horizontale, choisis Paysage : le cadre et le texte s’adaptent sans modifier la vidéo.</p>
+      </section>
+
       <section class="formatPicker" aria-label="Orientation de la fenêtre webcam facecam">
         <div class="formatTitle">Orientation de la webcam</div>
         <div class="formatChoices">

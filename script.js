@@ -20,6 +20,7 @@
     mediaVolumeValue: $('mediaVolumeValue'), microphoneToggleLabel: $('microphoneToggleLabel'),
     mediaAudioToggleLabel: $('mediaAudioToggleLabel'), activateMicBtn: $('activateMicBtn'),
     faceFormatVertical: $('faceFormatVertical'), faceFormatHorizontal: $('faceFormatHorizontal'),
+    teleFormatVertical: $('teleFormatVertical'), teleFormatHorizontal: $('teleFormatHorizontal'),
     microphoneHelp: $('microphoneHelp'), microphoneHelpText: $('microphoneHelpText'),
     retryMicrophoneBtn: $('retryMicrophoneBtn'), microphoneSettingsBtn: $('microphoneSettingsBtn'),
     audioMeter: $('audioMeter'),
@@ -54,7 +55,7 @@
     face: { ...DEFAULT_FACE }, classicFace: { ...DEFAULT_FACE }, greenFace: { ...DEFAULT_GREEN_FACE },
     facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
-    teleShouldScroll: false,
+    teleOrientation: 'free', teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
     panStart: null, lastTap: 0,
     teleRaf: 0, teleStartedAt: 0, teleRunning: false, telePaused: false, teleOffsetPx: 0,
@@ -88,6 +89,7 @@
   const microphoneVolume = () => clamp(Number(elements.micVolumeRange.value) || 0, 0, 200) / 100;
   const mediaVolume = () => clamp(Number(elements.mediaVolumeRange.value) || 0, 0, 100) / 100;
   const selectedFaceOrientation = () => elements.faceFormatHorizontal.checked ? 'horizontal' : 'vertical';
+  const selectedTeleOrientation = () => elements.teleFormatHorizontal.checked ? 'horizontal' : 'vertical';
   const liveTracks = (stream, kind) => stream?.getTracks().filter((track) => track.kind === kind && track.readyState === 'live') || [];
   const hasLiveCamera = () => liveTracks(state.cameraStream, 'video').length > 0;
   const hasLiveMicrophone = () => liveTracks(state.micOnlyStream, 'audio').length > 0;
@@ -454,6 +456,7 @@
     state.mediaHeight = Math.max(1, Number(height) || 1280);
     resizeStage();
     applyFaceAspect();
+    if (state.teleOrientation !== 'free') applyTeleAspect(false);
   }
 
   function resizeStage() {
@@ -486,7 +489,52 @@
     elements.teleprompter.style.top = `${box.y * 100}%`;
     elements.teleprompter.style.width = `${box.w * 100}%`;
     elements.teleprompter.style.height = `${box.h * 100}%`;
+    elements.teleprompter.dataset.orientation = state.teleOrientation === 'horizontal' ? 'horizontal' : 'vertical';
     if (!state.teleRunning && !state.telePaused) requestAnimationFrame(updateTeleScrollMode);
+  }
+
+  function applyTeleAspect(announce = true) {
+    const orientation = selectedTeleOrientation();
+    state.teleOrientation = orientation;
+    const stageRatio = Math.max(.1, state.mediaWidth / Math.max(1, state.mediaHeight));
+    const wantedRatio = orientation === 'horizontal' ? 16 / 9 : 9 / 16;
+    const centerX = state.teleBox.x + state.teleBox.w / 2;
+    const centerY = state.teleBox.y + state.teleBox.h / 2;
+    const maxWidth = .94;
+    const maxHeight = .90;
+    let width = clamp(state.teleBox.w, .24, maxWidth);
+    let height = width * stageRatio / wantedRatio;
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * wantedRatio / stageRatio;
+    }
+    if (width > maxWidth) {
+      width = maxWidth;
+      height = width * stageRatio / wantedRatio;
+    }
+    if (width < .24) {
+      width = .24;
+      height = width * stageRatio / wantedRatio;
+    }
+    if (height < .20) {
+      height = .20;
+      width = height * wantedRatio / stageRatio;
+    }
+    if (height > maxHeight) {
+      height = maxHeight;
+      width = height * wantedRatio / stageRatio;
+    }
+    state.teleBox = {
+      x: clamp(centerX - width / 2, 0, 1 - width),
+      y: clamp(centerY - height / 2, 0, 1 - height),
+      w: width,
+      h: height
+    };
+    layoutTeleprompter();
+    updateTeleText(false);
+    if (announce) showStatus(orientation === 'horizontal'
+      ? 'Téléprompteur paysage 16:9 activé'
+      : 'Téléprompteur portrait 9:16 activé');
   }
 
   function moveFace(position) {
@@ -1923,6 +1971,7 @@
         classicFace: state.classicFace,
         greenFace: state.greenFace,
         teleBox: state.teleBox,
+        teleOrientation: state.teleOrientation,
         mirrored: state.mirrored
       }));
     } catch (_) {}
@@ -1969,7 +2018,11 @@
       state.classicFace = restoreBox(layout?.classicFace || layout?.face, DEFAULT_FACE, .12, .10);
       state.greenFace = restoreBox(layout?.greenFace, DEFAULT_GREEN_FACE, .12, .10);
       state.face = { ...state.classicFace };
-      state.teleBox = restoreBox(layout?.teleBox, DEFAULT_TELE_BOX, .35, .24);
+      state.teleBox = restoreBox(layout?.teleBox, DEFAULT_TELE_BOX, .24, .20);
+      state.teleOrientation = layout?.teleOrientation === 'horizontal' || layout?.teleOrientation === 'vertical'
+        ? layout.teleOrientation : 'free';
+      elements.teleFormatHorizontal.checked = state.teleOrientation === 'horizontal';
+      elements.teleFormatVertical.checked = state.teleOrientation !== 'horizontal';
       if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;
     } catch (_) {}
   }
@@ -2192,6 +2245,11 @@
       ? 'Webcam paysage 16:9 sélectionnée'
       : 'Webcam verticale 9:16 sélectionnée');
   }));
+  [elements.teleFormatVertical, elements.teleFormatHorizontal].forEach((input) => input.addEventListener('change', (event) => {
+    if (!event.target.checked) return;
+    applyTeleAspect(true);
+    saveScript();
+  }));
   elements.scriptInput.addEventListener('input', () => {
     updateTeleText(false);
     clearTimeout(elements.scriptInput._saveTimer);
@@ -2219,6 +2277,9 @@
     if (greenStudioActive()) state.greenFace = { ...state.face };
     else state.classicFace = { ...state.face };
     state.teleBox = { ...DEFAULT_TELE_BOX };
+    state.teleOrientation = 'free';
+    elements.teleFormatVertical.checked = true;
+    elements.teleFormatHorizontal.checked = false;
     elements.sizeRange.value = '36';
     layoutFace();
     layoutTeleprompter();
@@ -2488,8 +2549,19 @@
     } else if (gesture.pointerId === event.pointerId && gesture.kind === 'resize') {
       const dx = (event.clientX - gesture.startX) / stageRect.width;
       const dy = (event.clientY - gesture.startY) / stageRect.height;
-      state.teleBox.w = clamp(gesture.box.w + dx, .35, 1 - gesture.box.x);
-      state.teleBox.h = clamp(gesture.box.h + dy, .24, 1 - gesture.box.y);
+      if (state.teleOrientation === 'horizontal' || state.teleOrientation === 'vertical') {
+        const widthScale = (gesture.box.w + dx) / Math.max(.01, gesture.box.w);
+        const heightScale = (gesture.box.h + dy) / Math.max(.01, gesture.box.h);
+        const scale = clamp(Math.min(widthScale, heightScale), .35, 2.5);
+        const width = clamp(gesture.box.w * scale, .24, 1 - gesture.box.x);
+        const height = clamp(gesture.box.h * scale, .20, 1 - gesture.box.y);
+        const uniformScale = Math.min(width / gesture.box.w, height / gesture.box.h);
+        state.teleBox.w = gesture.box.w * uniformScale;
+        state.teleBox.h = gesture.box.h * uniformScale;
+      } else {
+        state.teleBox.w = clamp(gesture.box.w + dx, .35, 1 - gesture.box.x);
+        state.teleBox.h = clamp(gesture.box.h + dy, .24, 1 - gesture.box.y);
+      }
     } else if (gesture.pointerId === event.pointerId && gesture.kind === 'drag') {
       state.teleBox.x = clamp(gesture.box.x + (event.clientX - gesture.startX) / stageRect.width, 0, 1 - state.teleBox.w);
       state.teleBox.y = clamp(gesture.box.y + (event.clientY - gesture.startY) / stageRect.height, 0, 1 - state.teleBox.h);
