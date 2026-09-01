@@ -272,3 +272,16 @@ test('Android, web app and teleprompter allow real rotation', () => {
   assert.match(script, /style\.transform = rotation \? `rotate\(\$\{rotation\}deg\)` : 'none'/);
   assert.match(script, /teleGestureCoordinate/);
 });
+
+
+test('camera rotation and lower teleprompter controls are wired end to end', () => {
+  assert.match(html, /id="cameraRotationLeft"/);
+  assert.match(html, /id="cameraRotationRight"/);
+  assert.match(html, /id="telePositionRange"/);
+  assert.match(script, /function drawCameraCovered/);
+  assert.match(script, /state\.cameraRotation/);
+  assert.match(script, /drawCameraCovered\(context, cameraSource/);
+  assert.match(script, /function setTeleVerticalPercent/);
+  assert.match(script, /DEFAULT_TELE_BOX = \{ x: \.05, y: \.24, w: \.90, h: \.68 \}/);
+  assert.match(androidBuild, /versionName '2\.17\.5'/);
+});

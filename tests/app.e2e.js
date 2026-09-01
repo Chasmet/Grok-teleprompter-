@@ -390,3 +390,25 @@ test('teleprompter stays usable after a landscape viewport rotation', async ({ p
   expect(box.width).toBeGreaterThan(80);
   expect(box.height).toBeGreaterThan(60);
 });
+
+
+test('camera rotates both ways and teleprompter can be lowered with the slider', async ({ page }) => {
+  const prompt = page.locator('#teleprompter');
+  const camera = page.locator('#cameraVideo');
+  const slider = page.locator('#telePositionRange');
+  await expect(page.locator('.cameraRotationPicker')).toBeVisible();
+  await page.locator('label:has(#cameraRotationRight) span').click();
+  await expect(page.locator('#cameraRotationRight')).toBeChecked();
+  await expect(camera).toHaveAttribute('data-rotation', '90');
+  await page.locator('label:has(#cameraRotationLeft) span').click();
+  await expect(page.locator('#cameraRotationLeft')).toBeChecked();
+  await expect(camera).toHaveAttribute('data-rotation', '-90');
+  await page.locator('label:has(#cameraRotation0) span').click();
+  await expect(camera).toHaveAttribute('data-rotation', '0');
+
+  const before = await prompt.boundingBox();
+  await slider.fill('100');
+  const after = await prompt.boundingBox();
+  expect(after.y).toBeGreaterThan(before.y + 20);
+  await expect(page.locator('#telePositionValue')).toHaveText('Bas');
+});

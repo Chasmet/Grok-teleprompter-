@@ -78,6 +78,12 @@
         <span>Glisse le texte vers le haut ou le bas à tout moment, même pendant REC. Utilise ✥ Déplacer le texte pour bouger le cadre.</span>
       </section>
 
+      <section class="telePositionBar" aria-label="Position verticale du téléprompteur">
+        <div class="telePositionHeader"><strong>Position du téléprompteur</strong><span id="telePositionValue">Bas</span></div>
+        <input id="telePositionRange" type="range" min="0" max="100" step="1" value="75" aria-label="Monter ou descendre le téléprompteur">
+        <div class="telePositionScale"><span>↑ Haut</span><span>Bas ↓</span></div>
+      </section>
+
       <section class="gestureHelp" aria-label="Aide tactile">
         <span>Facecam : glisse et pince pour la placer · fonctionne aussi pendant REC</span>
         <span id="teleScrollState">Texte court : reste fixe</span>
@@ -129,6 +135,25 @@
             <span>▭ Webcam <strong>16:9</strong></span>
           </label>
         </div>
+      </section>
+
+      <section class="cameraRotationPicker" aria-label="Rotation réelle de la caméra">
+        <div class="formatTitle">Rotation réelle de la caméra</div>
+        <div class="rotationChoices">
+          <label class="formatChoice rotationChoice">
+            <input id="cameraRotation0" name="cameraRotation" type="radio" value="0" checked>
+            <span>↥ Normal <strong>0°</strong></span>
+          </label>
+          <label class="formatChoice rotationChoice">
+            <input id="cameraRotationLeft" name="cameraRotation" type="radio" value="-90">
+            <span>↺ Caméra <strong>90° gauche</strong></span>
+          </label>
+          <label class="formatChoice rotationChoice">
+            <input id="cameraRotationRight" name="cameraRotation" type="radio" value="90">
+            <span>↻ Caméra <strong>90° droite</strong></span>
+          </label>
+        </div>
+        <p class="teleOrientationHint">Ce choix tourne réellement l’image caméra dans l’aperçu et dans la vidéo enregistrée.</p>
       </section>
 
       <section class="recordBar">
