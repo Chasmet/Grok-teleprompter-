@@ -20,7 +20,18 @@ jobs:
           fetch-depth: 0
 
       - name: Apply v2.17.5 patch
-        run: python3 .github/scripts/patch_camera_rotation_v2175.py
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/patch_camera_rotation_v2175.py')
+          s = p.read_text()
+          s = s.replace('y: .38, w: .90, h: .50', 'y: .32, w: .90, h: .60')
+          s = s.replace('state.teleBox.h = .50;', 'state.teleBox.h = .60;')
+          s = s.replace('state.teleBox.y, .38', 'state.teleBox.y, .32')
+          s = s.replace(r'y: \.38, w: \.90, h: \.50', r'y: \.32, w: \.90, h: \.60')
+          p.write_text(s)
+          PY
+          python3 .github/scripts/patch_camera_rotation_v2175.py
 
       - name: Check patch
         run: |
