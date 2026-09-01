@@ -1,0 +1,53 @@
+name: Final camera rotation v2.17.5
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  validate-and-apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Prepare readable lower prompt
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/patch_camera_rotation_v2175.py')
+          s = p.read_text()
+          s = s.replace('y: .38, w: .90, h: .50', 'y: .24, w: .90, h: .68')
+          s = s.replace('state.teleBox.h = .50;', 'state.teleBox.h = .68;')
+          s = s.replace('state.teleBox.y, .38', 'state.teleBox.y, .24')
+          s = s.replace(r'y: \.38, w: \.90, h: \.50', r'y: \.24, w: \.90, h: \.68')
+          p.write_text(s)
+          PY
+          python3 .github/scripts/patch_camera_rotation_v2175.py
+          git diff --check
+          node --check script.js
+      - name: Install tests
+        run: npm ci
+      - name: Static audit
+        run: npm test
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Mobile UI tests
+        run: npm run test:e2e
+      - name: Commit tested v2.17.5
+        run: |
+          rm -f .github/workflows/camera-rotation-v2175-final.yml
+          rm -f .github/workflows/camera-rotation-tele-position-v2175.yml
+          rm -f .github/scripts/patch_camera_rotation_v2175.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: camera rotation and lower teleprompter v2.17.5"
+          git push origin main
