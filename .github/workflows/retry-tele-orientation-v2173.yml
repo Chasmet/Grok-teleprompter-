@@ -45,6 +45,11 @@ jobs:
               "await page.locator('#teleFormatVertical').check();",
               "await page.locator('label:has(#teleFormatVertical) span').click();\n  await expect(page.locator('#teleFormatVertical')).toBeChecked();"
           )
+          tests = tests.replace(
+              "  const start = await prompt.boundingBox();",
+              "  await prompt.scrollIntoViewIfNeeded();\n  const start = await prompt.boundingBox();",
+              1
+          )
           test_path.write_text(tests)
           PY
           git diff --check
