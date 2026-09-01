@@ -1,0 +1,425 @@
+name: Add real teleprompter rotation v2.17.4
+
+on:
+  push:
+    paths:
+      - '.github/workflows/add-real-tele-rotation-v2174.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-build-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply real rotation patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"{label}: marker not found in {path}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              'app/src/main/AndroidManifest.xml',
+              '''        <activity
+                      android:name=".MainActivity"
+                      android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+                      android:exported="true"
+                      android:screenOrientation="portrait">''',
+              '''        <activity
+                      android:name=".MainActivity"
+                      android:configChanges="keyboard|keyboardHidden|orientation|screenLayout|screenSize|smallestScreenSize|uiMode"
+                      android:exported="true"
+                      android:screenOrientation="fullSensor">''',
+              'MainActivity sensor orientation'
+          )
+          replace_once('manifest.json', '"orientation": "portrait"', '"orientation": "any"', 'web manifest orientation')
+          replace_once('sw.js', "grok-teleprompter-studio-v23", "grok-teleprompter-studio-v24", 'service worker cache')
+          replace_once('app/build.gradle', "versionCode 28", "versionCode 29", 'versionCode')
+          replace_once('app/build.gradle', "versionName '2.17.3'", "versionName '2.17.4'", 'versionName')
+
+          rotation_section = '''      <section class="teleRotationPicker" aria-label="Rotation réelle du téléprompteur">
+                  <div class="formatTitle">Rotation réelle du téléprompteur</div>
+                  <div class="rotationChoices">
+                    <label class="formatChoice rotationChoice">
+                      <input id="teleRotation0" name="teleprompterRotation" type="radio" value="0" checked>
+                      <span>↥ Auto écran <strong>0°</strong></span>
+                    </label>
+                    <label class="formatChoice rotationChoice">
+                      <input id="teleRotationLeft" name="teleprompterRotation" type="radio" value="-90">
+                      <span>↺ Paysage <strong>90° gauche</strong></span>
+                    </label>
+                    <label class="formatChoice rotationChoice">
+                      <input id="teleRotationRight" name="teleprompterRotation" type="radio" value="90">
+                      <span>↻ Paysage <strong>90° droite</strong></span>
+                    </label>
+                  </div>
+                  <p class="teleOrientationHint">Auto suit la rotation du téléphone. Gauche/Droite font réellement pivoter le cadre et le texte de 90°.</p>
+                </section>
+
+          '''
+          marker = '      <section class="teleOrientationPicker" aria-label="Orientation du téléprompteur">'
+          replace_once('index.html', marker, rotation_section + marker, 'real rotation controls')
+          replace_once(
+              'index.html',
+              '<div class="formatTitle">Orientation du téléprompteur</div>',
+              '<div class="formatTitle">Format du cadre du téléprompteur</div>',
+              'rename frame format title'
+          )
+          replace_once(
+              'index.html',
+              '<p class="teleOrientationHint">Pour une vidéo horizontale, choisis Paysage : le cadre et le texte s’adaptent sans modifier la vidéo.</p>',
+              '<p class="teleOrientationHint">Ce réglage change seulement la forme du cadre. Pour tourner réellement le texte, utilise « Rotation réelle » juste au-dessus.</p>',
+              'clarify frame format'
+          )
+
+          replace_once(
+              'style.css',
+              '.formatPicker, .teleOrientationPicker { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #0b1430; }',
+              '.formatPicker, .teleOrientationPicker, .teleRotationPicker { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.08); background: #0b1430; }',
+              'rotation picker style'
+          )
+          replace_once(
+              'style.css',
+              '.formatChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }',
+              '''.formatChoices { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+          .rotationChoices { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 6px; }
+          .rotationChoices .formatChoice span { min-height: 58px; padding: 6px 3px; font-size: 11px; line-height: 1.15; }''',
+              'rotation choice grid'
+          )
+
+          replace_once(
+              'script.js',
+              "    teleFormatVertical: $('teleFormatVertical'), teleFormatHorizontal: $('teleFormatHorizontal'),\n",
+              "    teleFormatVertical: $('teleFormatVertical'), teleFormatHorizontal: $('teleFormatHorizontal'),\n    teleRotation0: $('teleRotation0'), teleRotationLeft: $('teleRotationLeft'), teleRotationRight: $('teleRotationRight'),\n",
+              'rotation DOM refs'
+          )
+          replace_once(
+              'script.js',
+              "    teleOrientation: 'free', teleShouldScroll: false,",
+              "    teleOrientation: 'free', teleRotation: 0, teleShouldScroll: false,",
+              'rotation state'
+          )
+          replace_once(
+              'script.js',
+              "  const selectedTeleOrientation = () => elements.teleFormatHorizontal.checked ? 'horizontal' : 'vertical';\n",
+              '''  const selectedTeleOrientation = () => elements.teleFormatHorizontal.checked ? 'horizontal' : 'vertical';
+          const selectedTeleRotation = () => elements.teleRotationLeft?.checked ? -90 : (elements.teleRotationRight?.checked ? 90 : 0);
+          const teleGestureCoordinate = (clientX, clientY) => state.teleRotation === 90
+            ? -clientX
+            : state.teleRotation === -90 ? clientX : clientY;
+          ''',
+              'rotation helpers'
+          )
+
+          replace_once(
+              'script.js',
+              '''    elements.teleprompter.style.width = `${box.w * 100}%`;
+              elements.teleprompter.style.height = `${box.h * 100}%`;
+              elements.teleprompter.dataset.orientation = state.teleOrientation === 'horizontal' ? 'horizontal' : 'vertical';
+              if (!state.teleRunning && !state.telePaused) requestAnimationFrame(updateTeleScrollMode);''',
+              '''    elements.teleprompter.style.width = `${box.w * 100}%`;
+              elements.teleprompter.style.height = `${box.h * 100}%`;
+              elements.teleprompter.dataset.orientation = state.teleOrientation === 'horizontal' ? 'horizontal' : 'vertical';
+              const rotation = Number(state.teleRotation) || 0;
+              elements.teleprompter.dataset.rotation = String(rotation);
+              elements.teleprompter.style.transformOrigin = 'center center';
+              elements.teleprompter.style.transform = rotation ? `rotate(${rotation}deg)` : 'none';
+              if (!state.teleRunning && !state.telePaused) requestAnimationFrame(updateTeleScrollMode);''',
+              'apply CSS rotation'
+          )
+
+          replace_once(
+              'script.js',
+              '''    if (announce) showStatus(orientation === 'horizontal'
+                ? 'Téléprompteur paysage 16:9 activé'
+                : 'Téléprompteur portrait 9:16 activé');
+            }
+
+            function moveFace(position) {''',
+              '''    if (announce) showStatus(orientation === 'horizontal'
+                ? 'Format du cadre : paysage 16:9'
+                : 'Format du cadre : portrait 9:16');
+            }
+
+            function applyTeleRotation(rotation = selectedTeleRotation(), announce = true) {
+              const numeric = Number(rotation);
+              const normalized = numeric === -90 || numeric === 90 ? numeric : 0;
+              state.teleRotation = normalized;
+              if (normalized !== 0 && selectedTeleOrientation() !== 'horizontal') {
+                elements.teleFormatHorizontal.checked = true;
+                elements.teleFormatVertical.checked = false;
+                state.teleOrientation = 'horizontal';
+                applyTeleAspect(false);
+              } else {
+                layoutTeleprompter();
+                updateTeleText(false);
+              }
+              if (announce) {
+                showStatus(normalized === -90
+                  ? 'Téléprompteur tourné à 90° vers la gauche'
+                  : normalized === 90
+                    ? 'Téléprompteur tourné à 90° vers la droite'
+                    : 'Rotation automatique : le téléprompteur suit l’écran', false, 2600);
+              }
+            }
+
+            function moveFace(position) {''',
+              'real rotation function'
+          )
+
+          replace_once(
+              'script.js',
+              '''        teleBox: state.teleBox,
+                  teleOrientation: state.teleOrientation,
+                  mirrored: state.mirrored''',
+              '''        teleBox: state.teleBox,
+                  teleOrientation: state.teleOrientation,
+                  teleRotation: state.teleRotation,
+                  mirrored: state.mirrored''',
+              'save rotation'
+          )
+          replace_once(
+              'script.js',
+              '''      elements.teleFormatHorizontal.checked = state.teleOrientation === 'horizontal';
+                elements.teleFormatVertical.checked = state.teleOrientation !== 'horizontal';
+                if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;''',
+              '''      elements.teleFormatHorizontal.checked = state.teleOrientation === 'horizontal';
+                elements.teleFormatVertical.checked = state.teleOrientation !== 'horizontal';
+                state.teleRotation = Number(layout?.teleRotation) === -90 ? -90 : (Number(layout?.teleRotation) === 90 ? 90 : 0);
+                elements.teleRotation0.checked = state.teleRotation === 0;
+                elements.teleRotationLeft.checked = state.teleRotation === -90;
+                elements.teleRotationRight.checked = state.teleRotation === 90;
+                if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;''',
+              'restore rotation'
+          )
+
+          replace_once(
+              'script.js',
+              '''  [elements.teleFormatVertical, elements.teleFormatHorizontal].forEach((input) => input.addEventListener('change', (event) => {
+                if (!event.target.checked) return;
+                applyTeleAspect(true);
+                saveScript();
+              }));
+              elements.scriptInput.addEventListener('input', () => {''',
+              '''  [elements.teleFormatVertical, elements.teleFormatHorizontal].forEach((input) => input.addEventListener('change', (event) => {
+                if (!event.target.checked) return;
+                applyTeleAspect(true);
+                saveScript();
+              }));
+              [elements.teleRotation0, elements.teleRotationLeft, elements.teleRotationRight].forEach((input) => input.addEventListener('change', (event) => {
+                if (!event.target.checked) return;
+                applyTeleRotation(Number(event.target.value), true);
+                saveScript();
+              }));
+              elements.scriptInput.addEventListener('input', () => {''',
+              'rotation listeners'
+          )
+          replace_once(
+              'script.js',
+              '''    state.teleOrientation = 'free';
+              elements.teleFormatVertical.checked = true;
+              elements.teleFormatHorizontal.checked = false;
+              elements.sizeRange.value = '36';''',
+              '''    state.teleOrientation = 'free';
+              state.teleRotation = 0;
+              elements.teleFormatVertical.checked = true;
+              elements.teleFormatHorizontal.checked = false;
+              elements.teleRotation0.checked = true;
+              elements.teleRotationLeft.checked = false;
+              elements.teleRotationRight.checked = false;
+              elements.sizeRange.value = '36';''',
+              'reset rotation'
+          )
+
+          replace_once(
+              'script.js',
+              '''  const pointInsideTeleprompter = (clientX, clientY) => {
+                if (elements.teleprompter.classList.contains('hide')) return false;
+                const box = elements.teleprompter.getBoundingClientRect();
+                return clientX >= box.left && clientX <= box.right && clientY >= box.top && clientY <= box.bottom;
+              };''',
+              '''  const pointInsideTeleprompter = (clientX, clientY) => {
+                if (elements.teleprompter.classList.contains('hide')) return false;
+                const hit = document.elementFromPoint(clientX, clientY);
+                return Boolean(hit && (hit === elements.teleprompter || elements.teleprompter.contains(hit)));
+              };''',
+              'transformed hit test'
+          )
+          replace_once(
+              'script.js',
+              '    state.teleTouchStartY = event.clientY;\n',
+              '    state.teleTouchStartY = teleGestureCoordinate(event.clientX, event.clientY);\n',
+              'pointer start axis'
+          )
+          replace_once(
+              'script.js',
+              '    const delta = event.clientY - state.teleTouchStartY;\n    setTeleOffset(state.teleTouchStartOffset - delta);',
+              '    const delta = teleGestureCoordinate(event.clientX, event.clientY) - state.teleTouchStartY;\n    setTeleOffset(state.teleTouchStartOffset - delta);',
+              'pointer move axis'
+          )
+          replace_once(
+              'script.js',
+              '    teleNativeTouchStartY = touch.clientY;\n',
+              '    teleNativeTouchStartY = teleGestureCoordinate(touch.clientX, touch.clientY);\n',
+              'native touch start axis'
+          )
+          replace_once(
+              'script.js',
+              '    const delta = touch.clientY - teleNativeTouchStartY;\n    setTeleOffset(teleNativeTouchStartOffset - delta);',
+              '    const delta = teleGestureCoordinate(touch.clientX, touch.clientY) - teleNativeTouchStartY;\n    setTeleOffset(teleNativeTouchStartOffset - delta);',
+              'native touch move axis'
+          )
+
+          test_marker = '''  await page.locator('label:has(#teleFormatVertical) span').click();
+            await expect(page.locator('#teleFormatVertical')).toBeChecked();
+            await expect(prompt).toHaveAttribute('data-orientation', 'vertical');
+            const vertical = await prompt.boundingBox();
+            expect(vertical.width / vertical.height).toBeGreaterThan(.53);
+            expect(vertical.width / vertical.height).toBeLessThan(.60);
+
+            await prompt.scrollIntoViewIfNeeded();'''
+          test_replacement = '''  await page.locator('label:has(#teleFormatVertical) span').click();
+            await expect(page.locator('#teleFormatVertical')).toBeChecked();
+            await expect(prompt).toHaveAttribute('data-orientation', 'vertical');
+            const vertical = await prompt.boundingBox();
+            expect(vertical.width / vertical.height).toBeGreaterThan(.53);
+            expect(vertical.width / vertical.height).toBeLessThan(.60);
+
+            await expect(page.locator('.teleRotationPicker')).toBeVisible();
+            await page.locator('label:has(#teleRotationRight) span').click();
+            await expect(page.locator('#teleRotationRight')).toBeChecked();
+            await expect(prompt).toHaveAttribute('data-rotation', '90');
+            const rotatedRight = await prompt.boundingBox();
+            expect(rotatedRight.height / rotatedRight.width).toBeGreaterThan(1.70);
+            expect(rotatedRight.height / rotatedRight.width).toBeLessThan(1.86);
+
+            await page.locator('label:has(#teleRotationLeft) span').click();
+            await expect(page.locator('#teleRotationLeft')).toBeChecked();
+            await expect(prompt).toHaveAttribute('data-rotation', '-90');
+
+            await page.locator('label:has(#teleRotation0) span').click();
+            await expect(page.locator('#teleRotation0')).toBeChecked();
+            await expect(prompt).toHaveAttribute('data-rotation', '0');
+
+            await prompt.scrollIntoViewIfNeeded();'''
+          replace_once('tests/app.e2e.js', test_marker, test_replacement, 'rotation e2e test')
+
+          audit = Path('tests/static-audit.test.mjs')
+          audit.write_text(audit.read_text() + '''
+
+          test('Android, web app and teleprompter allow real rotation', () => {
+            const webManifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+            assert.match(manifest, /android:name="\\.MainActivity"[\\s\\S]*android:screenOrientation="fullSensor"/);
+            assert.equal(webManifest.orientation, 'any');
+            assert.match(html, /id="teleRotationLeft"/);
+            assert.match(html, /id="teleRotationRight"/);
+            assert.match(script, /style\\.transform = rotation \\? `rotate\\(\\$\\{rotation\\}deg\\)` : 'none'/);
+            assert.match(script, /teleGestureCoordinate/);
+          });
+          ''')
+
+          e2e = Path('tests/app.e2e.js')
+          e2e.write_text(e2e.read_text() + '''
+
+          test('teleprompter stays usable after a landscape viewport rotation', async ({ page }) => {
+            const prompt = page.locator('#teleprompter');
+            await expect(prompt).toBeVisible();
+            await page.setViewportSize({ width: 720, height: 360 });
+            await expect(prompt).toBeVisible();
+            await expect(page.locator('#teleRotation0')).toBeChecked();
+            const box = await prompt.boundingBox();
+            expect(box.width).toBeGreaterThan(80);
+            expect(box.height).toBeGreaterThan(60);
+          });
+          ''')
+          PY
+
+          git diff --check
+          node --check script.js
+
+      - name: Install tests
+        run: npm ci
+
+      - name: Static audit
+        run: npm test
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Mobile and rotation tests
+        run: npm run test:e2e
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Install Android SDK 36
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Android lint and APK
+        run: gradle :app:lintDebug :app:assembleDebug --stacktrace
+
+      - name: Verify stable signature
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Commit tested v2.17.4
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/add-real-tele-rotation-v2174.yml
+          git add index.html style.css script.js manifest.json sw.js app/build.gradle app/src/main/AndroidManifest.xml tests/app.e2e.js tests/static-audit.test.mjs
+          git commit -m "fix: real landscape teleprompter rotation v2.17.4"
+          git push origin main
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk Grok-Teleprompter-v2.17.4.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Grok-Teleprompter-APK-v2.17.4
+          path: Grok-Teleprompter-v2.17.4.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publish internal update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v2.17.4 >/dev/null 2>&1; then
+            gh release upload v2.17.4 Grok-Teleprompter-v2.17.4.apk --clobber
+            gh release edit v2.17.4 \
+              --title "Grok Téléprompteur v2.17.4" \
+              --notes "Rotation paysage corrigée : l'application suit réellement l'orientation du téléphone et le téléprompteur peut aussi pivoter manuellement de 90° à gauche ou à droite. Mise à jour directe depuis Réglages > Mise à jour interne."
+          else
+            gh release create v2.17.4 Grok-Teleprompter-v2.17.4.apk \
+              --target main \
+              --title "Grok Téléprompteur v2.17.4" \
+              --notes "Rotation paysage corrigée : l'application suit réellement l'orientation du téléphone et le téléprompteur peut aussi pivoter manuellement de 90° à gauche ou à droite. Mise à jour directe depuis Réglages > Mise à jour interne." \
+              --latest
+          fi
