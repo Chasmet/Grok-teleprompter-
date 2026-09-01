@@ -102,6 +102,22 @@ test('the prompt stays readable and can be moved and resized', async ({ page }) 
   expect(vertical.width / vertical.height).toBeGreaterThan(.53);
   expect(vertical.width / vertical.height).toBeLessThan(.60);
 
+  await expect(page.locator('.teleRotationPicker')).toBeVisible();
+  await page.locator('label:has(#teleRotationRight) span').click();
+  await expect(page.locator('#teleRotationRight')).toBeChecked();
+  await expect(prompt).toHaveAttribute('data-rotation', '90');
+  const rotatedRight = await prompt.boundingBox();
+  expect(rotatedRight.height / rotatedRight.width).toBeGreaterThan(1.70);
+  expect(rotatedRight.height / rotatedRight.width).toBeLessThan(1.86);
+
+  await page.locator('label:has(#teleRotationLeft) span').click();
+  await expect(page.locator('#teleRotationLeft')).toBeChecked();
+  await expect(prompt).toHaveAttribute('data-rotation', '-90');
+
+  await page.locator('label:has(#teleRotation0) span').click();
+  await expect(page.locator('#teleRotation0')).toBeChecked();
+  await expect(prompt).toHaveAttribute('data-rotation', '0');
+
   await prompt.scrollIntoViewIfNeeded();
 
   const oldSize = Number(await page.locator('#sizeRange').inputValue());
@@ -361,4 +377,16 @@ test('the APK exclusively uses the Android camcorder microphone', async ({ page 
   await page.waitForTimeout(500);
   await page.locator('#stopBtn').click();
   await expect(page.locator('#download')).toBeVisible({ timeout: 15_000 });
+});
+
+
+test('teleprompter stays usable after a landscape viewport rotation', async ({ page }) => {
+  const prompt = page.locator('#teleprompter');
+  await expect(prompt).toBeVisible();
+  await page.setViewportSize({ width: 720, height: 360 });
+  await expect(prompt).toBeVisible();
+  await expect(page.locator('#teleRotation0')).toBeChecked();
+  const box = await prompt.boundingBox();
+  expect(box.width).toBeGreaterThan(80);
+  expect(box.height).toBeGreaterThan(60);
 });

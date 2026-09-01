@@ -83,8 +83,27 @@
         <span id="teleScrollState">Texte court : reste fixe</span>
       </section>
 
+      <section class="teleRotationPicker" aria-label="Rotation réelle du téléprompteur">
+        <div class="formatTitle">Rotation réelle du téléprompteur</div>
+        <div class="rotationChoices">
+          <label class="formatChoice rotationChoice">
+            <input id="teleRotation0" name="teleprompterRotation" type="radio" value="0" checked>
+            <span>↥ Auto écran <strong>0°</strong></span>
+          </label>
+          <label class="formatChoice rotationChoice">
+            <input id="teleRotationLeft" name="teleprompterRotation" type="radio" value="-90">
+            <span>↺ Paysage <strong>90° gauche</strong></span>
+          </label>
+          <label class="formatChoice rotationChoice">
+            <input id="teleRotationRight" name="teleprompterRotation" type="radio" value="90">
+            <span>↻ Paysage <strong>90° droite</strong></span>
+          </label>
+        </div>
+        <p class="teleOrientationHint">Auto suit la rotation du téléphone. Gauche/Droite font réellement pivoter le cadre et le texte de 90°.</p>
+      </section>
+
       <section class="teleOrientationPicker" aria-label="Orientation du téléprompteur">
-        <div class="formatTitle">Orientation du téléprompteur</div>
+        <div class="formatTitle">Format du cadre du téléprompteur</div>
         <div class="formatChoices">
           <label class="formatChoice">
             <input id="teleFormatVertical" name="teleprompterFormat" type="radio" value="vertical" checked>
@@ -95,7 +114,7 @@
             <span>▭ Paysage <strong>16:9</strong></span>
           </label>
         </div>
-        <p class="teleOrientationHint">Pour une vidéo horizontale, choisis Paysage : le cadre et le texte s’adaptent sans modifier la vidéo.</p>
+        <p class="teleOrientationHint">Ce réglage change seulement la forme du cadre. Pour tourner réellement le texte, utilise « Rotation réelle » juste au-dessus.</p>
       </section>
 
       <section class="formatPicker" aria-label="Orientation de la fenêtre webcam facecam">

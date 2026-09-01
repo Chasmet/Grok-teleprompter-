@@ -21,6 +21,7 @@
     mediaAudioToggleLabel: $('mediaAudioToggleLabel'), activateMicBtn: $('activateMicBtn'),
     faceFormatVertical: $('faceFormatVertical'), faceFormatHorizontal: $('faceFormatHorizontal'),
     teleFormatVertical: $('teleFormatVertical'), teleFormatHorizontal: $('teleFormatHorizontal'),
+    teleRotation0: $('teleRotation0'), teleRotationLeft: $('teleRotationLeft'), teleRotationRight: $('teleRotationRight'),
     microphoneHelp: $('microphoneHelp'), microphoneHelpText: $('microphoneHelpText'),
     retryMicrophoneBtn: $('retryMicrophoneBtn'), microphoneSettingsBtn: $('microphoneSettingsBtn'),
     audioMeter: $('audioMeter'),
@@ -55,7 +56,7 @@
     face: { ...DEFAULT_FACE }, classicFace: { ...DEFAULT_FACE }, greenFace: { ...DEFAULT_GREEN_FACE },
     facePointers: new Map(), faceGesture: null,
     teleBox: { ...DEFAULT_TELE_BOX }, telePointers: new Map(), teleGesture: null,
-    teleOrientation: 'free', teleShouldScroll: false,
+    teleOrientation: 'free', teleRotation: 0, teleShouldScroll: false,
     mediaView: { scale: 1, x: 0, y: 0 }, viewPointers: new Map(), pinchStart: null,
     panStart: null, lastTap: 0,
     teleRaf: 0, teleStartedAt: 0, teleRunning: false, telePaused: false, teleOffsetPx: 0,
@@ -90,6 +91,10 @@
   const mediaVolume = () => clamp(Number(elements.mediaVolumeRange.value) || 0, 0, 100) / 100;
   const selectedFaceOrientation = () => elements.faceFormatHorizontal.checked ? 'horizontal' : 'vertical';
   const selectedTeleOrientation = () => elements.teleFormatHorizontal.checked ? 'horizontal' : 'vertical';
+const selectedTeleRotation = () => elements.teleRotationLeft?.checked ? -90 : (elements.teleRotationRight?.checked ? 90 : 0);
+const teleGestureCoordinate = (clientX, clientY) => state.teleRotation === 90
+  ? -clientX
+  : state.teleRotation === -90 ? clientX : clientY;
   const liveTracks = (stream, kind) => stream?.getTracks().filter((track) => track.kind === kind && track.readyState === 'live') || [];
   const hasLiveCamera = () => liveTracks(state.cameraStream, 'video').length > 0;
   const hasLiveMicrophone = () => liveTracks(state.micOnlyStream, 'audio').length > 0;
@@ -490,6 +495,10 @@
     elements.teleprompter.style.width = `${box.w * 100}%`;
     elements.teleprompter.style.height = `${box.h * 100}%`;
     elements.teleprompter.dataset.orientation = state.teleOrientation === 'horizontal' ? 'horizontal' : 'vertical';
+    const rotation = Number(state.teleRotation) || 0;
+    elements.teleprompter.dataset.rotation = String(rotation);
+    elements.teleprompter.style.transformOrigin = 'center center';
+    elements.teleprompter.style.transform = rotation ? `rotate(${rotation}deg)` : 'none';
     if (!state.teleRunning && !state.telePaused) requestAnimationFrame(updateTeleScrollMode);
   }
 
@@ -533,8 +542,30 @@
     layoutTeleprompter();
     updateTeleText(false);
     if (announce) showStatus(orientation === 'horizontal'
-      ? 'Téléprompteur paysage 16:9 activé'
-      : 'Téléprompteur portrait 9:16 activé');
+      ? 'Format du cadre : paysage 16:9'
+      : 'Format du cadre : portrait 9:16');
+  }
+
+  function applyTeleRotation(rotation = selectedTeleRotation(), announce = true) {
+    const numeric = Number(rotation);
+    const normalized = numeric === -90 || numeric === 90 ? numeric : 0;
+    state.teleRotation = normalized;
+    if (normalized !== 0 && selectedTeleOrientation() !== 'horizontal') {
+      elements.teleFormatHorizontal.checked = true;
+      elements.teleFormatVertical.checked = false;
+      state.teleOrientation = 'horizontal';
+      applyTeleAspect(false);
+    } else {
+      layoutTeleprompter();
+      updateTeleText(false);
+    }
+    if (announce) {
+      showStatus(normalized === -90
+        ? 'Téléprompteur tourné à 90° vers la gauche'
+        : normalized === 90
+          ? 'Téléprompteur tourné à 90° vers la droite'
+          : 'Rotation automatique : le téléprompteur suit l’écran', false, 2600);
+    }
   }
 
   function moveFace(position) {
@@ -1972,6 +2003,7 @@
         greenFace: state.greenFace,
         teleBox: state.teleBox,
         teleOrientation: state.teleOrientation,
+        teleRotation: state.teleRotation,
         mirrored: state.mirrored
       }));
     } catch (_) {}
@@ -2023,6 +2055,10 @@
         ? layout.teleOrientation : 'free';
       elements.teleFormatHorizontal.checked = state.teleOrientation === 'horizontal';
       elements.teleFormatVertical.checked = state.teleOrientation !== 'horizontal';
+      state.teleRotation = Number(layout?.teleRotation) === -90 ? -90 : (Number(layout?.teleRotation) === 90 ? 90 : 0);
+      elements.teleRotation0.checked = state.teleRotation === 0;
+      elements.teleRotationLeft.checked = state.teleRotation === -90;
+      elements.teleRotationRight.checked = state.teleRotation === 90;
       if (typeof layout?.mirrored === 'boolean') state.mirrored = layout.mirrored;
     } catch (_) {}
   }
@@ -2084,7 +2120,7 @@
     if (state.teleTouchPointer !== -1 || teleTextGestureBlocked(event.target)) return;
     if (!pointInsideTeleprompter(event.clientX, event.clientY)) return;
     state.teleTouchPointer = event.pointerId;
-    state.teleTouchStartY = event.clientY;
+    state.teleTouchStartY = teleGestureCoordinate(event.clientX, event.clientY);
     state.teleOffsetPx = currentTeleOffset();
     state.teleTouchStartOffset = state.teleOffsetPx;
     state.teleTouchWasRunning = state.teleRunning && !state.telePaused;
@@ -2100,7 +2136,7 @@
   document.addEventListener('pointerdown', beginTeleTextPointer, true);
   window.addEventListener('pointermove', (event) => {
     if (event.pointerId !== state.teleTouchPointer) return;
-    const delta = event.clientY - state.teleTouchStartY;
+    const delta = teleGestureCoordinate(event.clientX, event.clientY) - state.teleTouchStartY;
     setTeleOffset(state.teleTouchStartOffset - delta);
     event.preventDefault();
   }, true);
@@ -2130,7 +2166,7 @@
     const touch = event.changedTouches?.[0];
     if (!touch || !pointInsideTeleprompter(touch.clientX, touch.clientY)) return;
     teleNativeTouchId = touch.identifier;
-    teleNativeTouchStartY = touch.clientY;
+    teleNativeTouchStartY = teleGestureCoordinate(touch.clientX, touch.clientY);
     state.teleOffsetPx = currentTeleOffset();
     teleNativeTouchStartOffset = state.teleOffsetPx;
     teleNativeTouchWasRunning = state.teleRunning && !state.telePaused;
@@ -2147,7 +2183,7 @@
     if (teleNativeTouchId === null) return;
     const touch = Array.from(event.touches || []).find((item) => item.identifier === teleNativeTouchId);
     if (!touch) return;
-    const delta = touch.clientY - teleNativeTouchStartY;
+    const delta = teleGestureCoordinate(touch.clientX, touch.clientY) - teleNativeTouchStartY;
     setTeleOffset(teleNativeTouchStartOffset - delta);
     event.preventDefault();
   }, { passive: false, capture: true });
@@ -2250,7 +2286,12 @@
     applyTeleAspect(true);
     saveScript();
   }));
-  elements.scriptInput.addEventListener('input', () => {
+  [elements.teleRotation0, elements.teleRotationLeft, elements.teleRotationRight].forEach((input) => input.addEventListener('change', (event) => {
+  if (!event.target.checked) return;
+  applyTeleRotation(Number(event.target.value), true);
+  saveScript();
+}));
+elements.scriptInput.addEventListener('input', () => {
     updateTeleText(false);
     clearTimeout(elements.scriptInput._saveTimer);
     elements.scriptInput._saveTimer = setTimeout(saveScript, 350);
@@ -2278,8 +2319,12 @@
     else state.classicFace = { ...state.face };
     state.teleBox = { ...DEFAULT_TELE_BOX };
     state.teleOrientation = 'free';
+    state.teleRotation = 0;
     elements.teleFormatVertical.checked = true;
     elements.teleFormatHorizontal.checked = false;
+    elements.teleRotation0.checked = true;
+    elements.teleRotationLeft.checked = false;
+    elements.teleRotationRight.checked = false;
     elements.sizeRange.value = '36';
     layoutFace();
     layoutTeleprompter();

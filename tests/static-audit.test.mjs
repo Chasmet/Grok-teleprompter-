@@ -261,3 +261,14 @@ test('recording results, imported files and Android interruptions are protected'
   assert.match(script, /Codec vidéo non compatible avec ce téléphone/);
   assert.match(script, /event\.target\.value = ''/);
 });
+
+
+test('Android, web app and teleprompter allow real rotation', () => {
+  const webManifest = JSON.parse(fs.readFileSync(new URL('../manifest.json', import.meta.url), 'utf8'));
+  assert.match(manifest, /android:name="\.MainActivity"[\s\S]*android:screenOrientation="fullSensor"/);
+  assert.equal(webManifest.orientation, 'any');
+  assert.match(html, /id="teleRotationLeft"/);
+  assert.match(html, /id="teleRotationRight"/);
+  assert.match(script, /style\.transform = rotation \? `rotate\(\$\{rotation\}deg\)` : 'none'/);
+  assert.match(script, /teleGestureCoordinate/);
+});
